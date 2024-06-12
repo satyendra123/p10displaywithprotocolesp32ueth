@@ -1,7 +1,5 @@
 #example-1 I AM USING THIS TO KNOW THAT HOW CAN I EXTRACT THE DATA FROM THE PROTOCOL
 
-cpp
-Copy code
 #include <Arduino.h>
 
 void parseReceivedData(String data) {
