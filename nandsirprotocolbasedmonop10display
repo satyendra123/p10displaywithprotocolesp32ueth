@@ -40,10 +40,6 @@ void loop() {
   }
 }
 
-cpp
-Copy code
-cpp
-Copy code
 void processReceivedData(String data) {
   if (data.startsWith("|C|")) {
     // Parse the received ASCII protocol data
