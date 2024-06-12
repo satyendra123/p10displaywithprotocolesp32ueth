@@ -1,0 +1,129 @@
+#include <DMD32.h>  
+#include "fonts/SystemFont5x7.h"
+#include "fonts/Arial_black_16.h"
+#include <HardwareSerial.h>
+
+#define DISPLAYS_ACROSS 1
+#define DISPLAYS_DOWN 1
+DMD dmd(DISPLAYS_ACROSS, DISPLAYS_DOWN);
+
+hw_timer_t * timer = NULL;
+
+void IRAM_ATTR triggerScan() {
+  dmd.scanDisplayBySPI();
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+
+  // Set up UART for RS485 communication
+  HardwareSerial RS485(2);
+  RS485.begin(9600, SERIAL_8N1, 14, 15);  // Assuming UART2 pins on ESP32 are GPIO14 and GPIO15
+  delay(500);
+
+  uint8_t cpuClock = ESP.getCpuFreqMHz();
+  timer = timerBegin(0, cpuClock, true);
+  delay(500);
+  timerAttachInterrupt(timer, &triggerScan, true);
+  delay(500);
+  timerAlarmWrite(timer, 300, true);
+  delay(500);
+  timerAlarmEnable(timer);
+  delay(500);
+}
+
+void loop() {
+  if (Serial.available()) {
+    String receivedData = Serial.readStringUntil('\n'); // Read data from UART
+    processReceivedData(receivedData); // Process received data
+  }
+}
+
+cpp
+Copy code
+cpp
+Copy code
+void processReceivedData(String data) {
+  if (data.startsWith("|C|")) {
+    // Parse the received ASCII protocol data
+    int firstPipeIndex = data.indexOf('|', 3);
+    int secondPipeIndex = data.indexOf('|', firstPipeIndex + 1);
+    int thirdPipeIndex = data.indexOf('|', secondPipeIndex + 1);
+    int fourthPipeIndex = data.indexOf('|', thirdPipeIndex + 1);
+
+    if (firstPipeIndex != -1 && secondPipeIndex != -1 && thirdPipeIndex != -1 && fourthPipeIndex != -1) {
+      int messageLength = data.substring(secondPipeIndex + 1, thirdPipeIndex).toInt();
+      String tempData = data.substring(thirdPipeIndex + 1, fourthPipeIndex);
+      String coordinates = data.substring(fourthPipeIndex + 1);
+
+      // Calculate display area width based on the number of tiles
+      int displayWidth = DISPLAYS_ACROSS * 32;
+      // Assuming last tile for dynamic data, adjust the X position
+      int xPos = displayWidth - 32; // Set to the last tile
+
+      // Extract Y coordinate (assuming fixed Y position)
+      int yPos = 0; // Set to the top of the display
+
+      // Handle different message lengths, arrow directions, and colors using a switch statement
+      switch (messageLength) {
+        case 4:
+          // Display temporary message on LED display
+          dmd.clearScreen(true);
+          dmd.selectFont(SystemFont5x7);
+          dmd.drawChar(xPos, yPos, tempData[0]);
+          break;
+        case 8:
+          // Display permanent message on LED display
+          dmd.clearScreen(true);
+          dmd.selectFont(SystemFont5x7);
+          dmd.drawString(xPos, yPos, tempData.c_str(), 1);
+          break;
+        // Add additional cases for different message lengths
+        default:
+          // Handle unknown message length (optional)
+          break;
+      }
+
+      // Handle arrow directions and colors
+      for (int i = 0; i < tempData.length(); i++) {
+        switch (tempData[i]) {
+          case '#':
+            // Arrow detected, handle direction
+            if (tempData[i + 1] == 'u') {
+              // Handle up arrow
+              // Implement your logic here
+            } else if (tempData[i + 1] == 'r') {
+              // Handle right arrow
+              // Implement your logic here
+            } else if (tempData[i + 1] == 'l') {
+              // Handle left arrow
+              // Implement your logic here
+            } else if (tempData[i + 1] == 'd') {
+              // Handle down arrow
+              // Implement your logic here
+            }
+            // Move i to skip the direction character
+            i++;
+            break;
+          case 'R':
+            // Handle red color
+            // Implement your logic here
+            break;
+          case 'G':
+            // Handle green color
+            // Implement your logic here
+            break;
+          case 'B':
+            // Handle blue color
+            // Implement your logic here
+            break;
+          default:
+            // Handle other characters (optional)
+            break;
+        }
+      }
+    }
+  }
+}
+
