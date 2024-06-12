@@ -1,3 +1,106 @@
+#example-1 I AM USING THIS TO KNOW THAT HOW CAN I EXTRACT THE DATA FROM THE PROTOCOL
+cpp
+Copy code
+#include <Arduino.h>
+
+void parseReceivedData(String data) {
+  if (data.startsWith("|C|")) {
+    // Parse the received ASCII protocol data
+    int firstPipeIndex = data.indexOf('|', 3);
+    int secondPipeIndex = data.indexOf('|', firstPipeIndex + 1);
+    int thirdPipeIndex = data.indexOf('|', secondPipeIndex + 1);
+    int fourthPipeIndex = data.indexOf('|', thirdPipeIndex + 1);
+
+    if (firstPipeIndex != -1 && secondPipeIndex != -1 && thirdPipeIndex != -1 && fourthPipeIndex != -1) {
+      int messageLength = data.substring(secondPipeIndex + 1, thirdPipeIndex).toInt();
+      String tempData = data.substring(thirdPipeIndex + 1, fourthPipeIndex);
+      String coordinates = data.substring(fourthPipeIndex + 1);
+
+      // Extract X and Y coordinates
+      int xPos = coordinates.substring(0, coordinates.indexOf('-')).toInt();
+      int yPos = coordinates.substring(coordinates.indexOf('-') + 1, coordinates.lastIndexOf('-')).toInt();
+
+      // Print received data
+      Serial.print("Data: ");
+      Serial.println(tempData);
+
+      // Determine if the message is temporary or permanent
+      if (messageLength == 4) {
+        Serial.println("Type: Temporary");
+      } else if (messageLength == 8) {
+        Serial.println("Type: Permanent");
+      } else {
+        Serial.println("Type: Unknown");
+      }
+
+      // Extract arrow direction and color
+      for (int i = 0; i < tempData.length(); i++) {
+        switch (tempData[i]) {
+          case '#':
+            // Arrow detected, handle direction
+            switch (tempData[i + 1]) {
+              case 'u':
+                Serial.println("Arrow Direction: Up");
+                break;
+              case 'r':
+                Serial.println("Arrow Direction: Right");
+                break;
+              case 'l':
+                Serial.println("Arrow Direction: Left");
+                break;
+              case 'd':
+                Serial.println("Arrow Direction: Down");
+                break;
+              default:
+                Serial.println("Unknown Arrow Direction");
+                break;
+            }
+            // Move i to skip the direction character
+            i++;
+            break;
+          case 'R':
+            Serial.println("Color: Red");
+            break;
+          case 'G':
+            Serial.println("Color: Green");
+            break;
+          case 'B':
+            Serial.println("Color: Blue");
+            break;
+          default:
+            // Handle other characters (optional)
+            break;
+        }
+      }
+
+      // Print coordinates
+      Serial.print("X Position: ");
+      Serial.println(xPos);
+      Serial.print("Y Position: ");
+      Serial.println(yPos);
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000); // Allow time for Serial Monitor to initialize
+  Serial.println("Ready");
+}
+
+void loop() {
+  // Simulating received data
+  String receivedData = "|C|1|4|1|28-0-#u#R-97|";
+  parseReceivedData(receivedData);
+  delay(1000);
+}
+
+
+
+
+
+
+#example-2 THIS IS THE REAL PROJECT
 #NOTE- so ye code maine likha hai jisko hum dekhte hai ki isme se hum data ko kaise extract kar sakte hai s format se. so maine khud ke liye ek protocol banane ka  try kiya hai nand sir ke jaise same. ab ise hum dekhte hai ki ye work karta hai ya nahi
 #include <DMD32.h>  
 #include "fonts/SystemFont5x7.h"
