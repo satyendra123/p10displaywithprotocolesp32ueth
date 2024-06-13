@@ -1,0 +1,42 @@
+import re
+
+def extract_data(data):
+    pattern = r'\|([A-Z])\|(\d+)\|(\d+)\|(\d+)\|(\d+)-(\d+)-#(\w)#(\w)(\d+)\|'
+    match = re.match(pattern, data)
+    
+    if not match:
+        raise ValueError("Data format is incorrect")
+
+    start_byte = match.group(1)
+    ID = int(match.group(2))
+    temp_data = int(match.group(3))
+    perm_data = int(match.group(4))
+    x_axis = int(match.group(5))
+    y_axis = int(match.group(6))
+    arrow = match.group(7)
+    color = match.group(8)
+    display_data = int(match.group(9))
+
+    # Map arrow and color to their descriptions
+    arrow_map = {'u': 'up', 'd': 'down', 'l': 'left', 'r': 'right'}
+    color_map = {'R': 'red', 'G': 'green', 'B': 'blue', 'Y': 'yellow'}
+
+    arrow_description = arrow_map.get(arrow, 'unknown')
+    color_description = color_map.get(color, 'unknown')
+
+    return {
+        'start_byte': start_byte,
+        'ID': ID,
+        'temp_data': temp_data,
+        'perm_data': perm_data,
+        'x_axis': x_axis,
+        'y_axis': y_axis,
+        'arrow': arrow_description,
+        'color': color_description,
+        'display_data': display_data
+    }
+
+# Test the function with the provided data string
+data = "|C|1|8|1|28-0-#u#R96|"
+result = extract_data(data)
+print(result)
