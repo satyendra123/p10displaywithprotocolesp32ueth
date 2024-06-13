@@ -1,3 +1,4 @@
+#EXAMPLE-1 is code me thoda sa issue ye hai ki
 import re
 
 def extract_data(data):
@@ -40,3 +41,50 @@ def extract_data(data):
 data = "|C|1|8|1|28-0-#u#R96|"
 result = extract_data(data)
 print(result)
+#NOTE- output= {'start_byte': 'C', 'ID': 1, 'temp_data': 8, 'perm_data': 1, 'x_axis': 28, 'y_axis': 0, 'arrow': 'up', 'color': 'red', 'display_data': 96}
+
+#EXAMPLE-2 ye code jo hai mera ye sahi se work kar rha hai. upar wale code me thoda sa issue hai
+import re
+
+def extract_data(data):
+    # Define a regular expression pattern to match the components of the data string
+    pattern = r'\|([A-Z])\|(\d+)\|([48])\|\d\|(\d+)-(\d+)-#([a-zA-Z])#([a-zA-Z])(\d+)\|'
+    match = re.match(pattern, data)
+    
+    if not match:
+        raise ValueError("Data format is incorrect")
+
+    # Extract the matched groups
+    start_byte = match.group(1)
+    ID = int(match.group(2))
+    data_type = 'temporary' if match.group(3) == '4' else 'permanent'
+    x_axis = int(match.group(4))
+    y_axis = int(match.group(5))
+    arrow = match.group(6)
+    color = match.group(7)
+    display_data = int(match.group(8))
+
+    # Map arrow and color to their descriptions
+    arrow_map = {'u': 'up', 'd': 'down', 'l': 'left', 'r': 'right'}
+    color_map = {'R': 'red', 'G': 'green', 'B': 'blue', 'Y': 'yellow'}
+
+    arrow_description = arrow_map.get(arrow, 'unknown')
+    color_description = color_map.get(color, 'unknown')
+
+    return {
+        'start_byte': start_byte,
+        'ID': ID,
+        'data_type': data_type,
+        'x_axis': x_axis,
+        'y_axis': y_axis,
+        'arrow': arrow_description,
+        'color': color_description,
+        'display_data': display_data
+    }
+
+# Test the function with the provided data string
+data = "|C|1|4|1|28-0-#u#R96|"
+result = extract_data(data)
+print(result)
+#NOTE- is code perfectly work kar rha hai ayr mujhe ye data de rha hai output me 
+{'start_byte': 'C', 'ID': 1, 'data_type': 'temporary', 'x_axis': 28, 'y_axis': 0, 'arrow': 'up', 'color': 'red', 'display_data': 96}
