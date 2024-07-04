@@ -1,0 +1,195 @@
+#NOTE- actually p10 display ka hub 75 me basically 3 types ke hi aate hai 1) smd 3535 4S(1/4 scanning) 2) smd 2525 4S(1/4 scanning) 3) smd 2727 8S(1/8 scanning)
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+// Information about the P10 RGB Panel that I use :
+// - P10 RGB 32x16 HUB75 Scan 1/8 Full Color SMD.
+// - Information written on the P10 RGB board : P10-2727-8S-32X16-A
+// - IC or Chip on the P10 RGB board :
+//   > RUC7258D
+//   > DP5125D
+//   > 74HC245KA
+// - HUB75 (Scan 1/8) : 
+//    -----------
+//   | DR1 | DG1 |
+//   | DB1 | GND |
+//   | DR2 | DG2 |
+//   | DB2 | GND |
+//   |  A  |  B  |
+//   |  C  | GND |
+//   | CLK | STB |
+//   | OE  | GND |
+//    -----------
+// 
+// Software :
+// - Arduino IDE 1.8.19
+// 
+// Arduino core for the ESP32 :
+// - Arduino core for the ESP32, ESP32-S2, ESP32-S3, ESP32-C3, ESP32-C6 and ESP32-H2 (V2.0.16).
+// 
+// Arduino Libraries :
+// - Adafruit GFX Library by Adafruit (V1.11.9).
+// - Adafruit BusIO by Adafruit (V1.16.1).
+// - PxMatrix Library by 2dom (Dominic Buchstaller) (V1.8.2).
+// 
+// Hardware :
+// - ESP32 DEVKIT V1.
+// - P10 RGB 32x16.
+// - 5V Power Supply.
+// - For more details, see the installation picture.
+// 
+// Troubleshooting : https://github.com/2dom/PxMatrix/tree/master?tab=readme-ov-file#troubleshooting
+//
+// If you want to install two panels or more, please look at the installation image file "Installation of Two Panels or more.png".
+// Installation reference for two panels or more :
+// - https://github.com/2dom/PxMatrix/issues/166#issuecomment-605759662
+// - https://github.com/2dom/PxMatrix/issues/200#issuecomment-642714636
+// 
+// Guide to Arduino code if using two panels or more:
+// - https://github.com/2dom/PxMatrix?tab=readme-ov-file#chaining
+// 
+// Advantages and disadvantages of the PxMatrix library (in my personal opinion):
+// - Advantages :
+//   > Uses fewer PINs than other libraries.
+//   > Compatible with ESP8266, ESP32 and ATMEL.
+//   > Easy to use.
+// - Disadvantages:
+//   > Not the best solution for driving larger displays. Source: https://github.com/2dom/PxMatrix/issues/325#issuecomment-1604367830
+
+#EXAMPLE-1 
+#include <PxMatrix.h>
+
+#define P_LAT 5
+#define P_A   19
+#define P_B   23
+#define P_C   18
+#define P_OE  4
+
+#define matrix_width  32
+#define matrix_height 16
+
+hw_timer_t * timer = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+
+uint8_t display_draw_time = 30; // 30-70 is usually fine.
+PxMATRIX display(matrix_width, matrix_height, P_LAT, P_OE, P_A, P_B, P_C);
+
+// display.color565(R value = 0-255, G value = 0-255, B value = 0-255);
+uint16_t myRED      = display.color565(255, 0, 0);
+uint16_t myGREEN    = display.color565(0, 255, 0);
+uint16_t myBLUE     = display.color565(0, 0, 255);
+uint16_t myWHITE    = display.color565(255, 255, 255);
+uint16_t myYELLOW   = display.color565(255, 255, 0);
+uint16_t myCYAN     = display.color565(0, 255, 255);
+uint16_t myMAGENTA  = display.color565(255, 0, 255);
+uint16_t myVIOLET   = display.color565(127, 0, 255);
+uint16_t myBLACK    = display.color565(0, 0, 0);
+
+uint16_t myCOLOR_ARRAY[8] = {myRED, myGREEN, myBLUE, myWHITE, myYELLOW, myCYAN, myMAGENTA, myVIOLET};
+
+// Interrupt handler for Timer.
+void IRAM_ATTR display_updater(){
+  // Increment the counter and set the time of ISR.
+  portENTER_CRITICAL_ISR(&timerMux);
+  display.display(display_draw_time);
+  portEXIT_CRITICAL_ISR(&timerMux);
+}
+
+// Subroutine to enable and disable interrupt timers.
+void display_update_enable(bool is_enable) {
+  if (is_enable){
+    timer = timerBegin(0, 80, true);
+    timerAttachInterrupt(timer, &display_updater, true);
+    timerAlarmWrite(timer, 1500, true);
+    timerAlarmEnable(timer);
+  }
+  else{
+    timerDetachInterrupt(timer);
+    timerAlarmDisable(timer);
+  }
+}
+
+void setup() {
+
+  delay(2000);
+  Serial.begin(115200);
+  Serial.println();
+
+  // Display initialization.
+  display.begin(8); //--> Value 8 for 1/8 row scan panel.
+  delay(100);
+
+  // Enable Timer Interrupts.
+  display_update_enable(true);
+  delay(100);
+
+  display.clearDisplay();
+  delay(1000);
+
+  display.setBrightness(125); //--> Range from 0 to 255.
+  delay(100);
+
+  display.fillScreen(myRED);
+  delay(2000);
+  display.fillScreen(myGREEN);
+  delay(2000);
+  display.fillScreen(myBLUE);
+  delay(2000);
+  display.fillScreen(myWHITE);
+  delay(2000);
+
+  display.clearDisplay();
+  delay(1000);
+
+  display.setTextWrap(false);
+  display.setTextSize(1);
+  display.setRotation(0);
+  delay(100);
+
+  display.fillScreen(display.color565(255, 0, 0));
+  display.setTextColor(display.color565(255, 255, 255));
+  display.setCursor(0, 0);
+  display.print("UTEH");
+  display.setTextColor(display.color565(255, 255, 255));
+  display.setCursor(15, 9);
+  display.print("STR");
+  delay(5000);
+
+  display.clearDisplay();
+  delay(1000);
+}
+
+void loop() 
+{
+  int myCOLOR_ARRAY_Length = sizeof(myCOLOR_ARRAY) / sizeof(myCOLOR_ARRAY[0]);
+  
+  for (byte i = 0; i < myCOLOR_ARRAY_Length; i++) {
+    display.setTextColor(myCOLOR_ARRAY[i]);
+    display.setCursor(0, 0);
+    display.print("1234");
+    display.setCursor(0, 9);
+    display.print("ABCD");
+    delay(2500);
+
+    display.clearDisplay();
+    delay(1000);
+
+    display.setTextColor(myCOLOR_ARRAY[i]);
+    display.setCursor(4, 0);
+    display.print("1234");
+    display.setCursor(4, 9);
+    display.print("ABCD");
+    delay(2500);
+
+    display.clearDisplay();
+    delay(1000);
+
+    display.setCursor(9, 0);
+    display.print("1234");
+    display.setCursor(9, 9);
+    display.print("ABCD");
+    delay(2500);
+  
+    display.clearDisplay();
+    delay(1000);
+  }
+}
+
