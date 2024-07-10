@@ -64,4 +64,96 @@ void extractData(String data) {
   Serial.println("Display Data: " + String(display_data));
 }
 
+#EXAMPLE-2  using python without using the any library
+data = "|C|1|4|1|28-0-#u#R96|"
 
+def extract_data(data):
+    # Extracting data without mapping
+    start_pos = data.find('|') + 1
+    end_pos = data.find('|', start_pos)
+    start_byte = data[start_pos:end_pos]
+
+    start_pos = end_pos + 1
+    end_pos = data.find('|', start_pos)
+    ID = int(data[start_pos:end_pos])
+
+    start_pos = end_pos + 1
+    end_pos = data.find('|', start_pos)
+    data_type_code = int(data[start_pos:end_pos])
+    data_type = "temporary" if data_type_code == 4 else "permanent"
+
+    start_pos = end_pos + 1
+    end_pos = data.find('|', start_pos)
+    fakedata = int(data[start_pos:end_pos])
+
+    start_pos = end_pos + 1
+    end_pos = data.find('-', start_pos)
+    x_axis = int(data[start_pos:end_pos])
+
+    start_pos = end_pos + 1
+    end_pos = data.find('-', start_pos)
+    y_axis = int(data[start_pos:end_pos])
+
+    start_pos = end_pos + 2  # Skip past '-' and '#'
+    end_pos = data.find('#', start_pos)
+    arrow = data[start_pos:end_pos]
+
+    start_pos = end_pos + 1
+    end_pos = data.find('|', start_pos)
+    colorWithData = data[start_pos:end_pos]
+    actualColor = colorWithData[0]
+    display_data = int(colorWithData[1:])
+
+    # Print the extracted data
+    print("Extracted Data:")
+    print("Start Byte:", start_byte)
+    print("ID:", ID)
+    print("Data Type:", data_type)
+    print("X Axis:", x_axis)
+    print("Y Axis:", y_axis)
+    print("Arrow:", arrow)
+    print("Color:", actualColor)
+    print("Display Data:", display_data)
+
+# Call the function with the data string
+extract_data(data)
+
+#EXAMPLE-3 using re library python code to extract the data
+import re
+
+data = "|C|1|8|1|28-0-#u#R96|"
+
+def extract_data(data):
+    # Define the regex pattern for extracting data
+    pattern = r"\|([A-Z])\|(\d+)\|(\d+)\|(\d+)\|(\d+)-(\d+)-#(.*?)#(.*?)\|"
+
+    # Use re.match to extract data
+    match = re.match(pattern, data)
+    if match:
+        start_byte = match.group(1)
+        ID = int(match.group(2))
+        data_type_code = int(match.group(3))
+        data_type = "temporary" if data_type_code == 4 else "permanent"
+        fakedata = int(match.group(4))
+        x_axis = int(match.group(5))
+        y_axis = int(match.group(6))
+        arrow = match.group(7)
+        actualColor = match.group(8)[0]
+        display_data = int(match.group(8)[1:])
+
+        # Print the extracted data
+        print("Extracted Data:")
+        print("Start Byte:", start_byte)
+        print("ID:", ID)
+        print("Data Type:", data_type)
+        print("Fake Data:", fakedata)
+        print("X Axis:", x_axis)
+        print("Y Axis:", y_axis)
+        print("Arrow:", arrow)
+        print("Color:", actualColor)
+        print("Display Data:", display_data)
+    else:
+        print("No match found for the pattern.")
+
+# Call the function with the data string
+extract_data(data)
