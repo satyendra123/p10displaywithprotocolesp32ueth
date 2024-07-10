@@ -1,90 +1,251 @@
-#EXAMPLE-1 is code me thoda sa issue ye hai ki
-import re
+#example-1 I AM USING THIS TO KNOW THAT HOW CAN I EXTRACT THE DATA FROM THE PROTOCOL
 
-def extract_data(data):
-    pattern = r'\|([A-Z])\|(\d+)\|(\d+)\|(\d+)\|(\d+)-(\d+)-#(\w)#(\w)(\d+)\|'
-    match = re.match(pattern, data)
-    
-    if not match:
-        raise ValueError("Data format is incorrect")
+String data = "|C|1|4|1|28-0-#u#R96|";
 
-    start_byte = match.group(1)
-    ID = int(match.group(2))
-    temp_data = int(match.group(3))
-    perm_data = int(match.group(4))
-    x_axis = int(match.group(5))
-    y_axis = int(match.group(6))
-    arrow = match.group(7)
-    color = match.group(8)
-    display_data = int(match.group(9))
+void setup() {
+  Serial.begin(9600);
+  delay(2000); // Allow serial monitor to initialize
 
-    # Map arrow and color to their descriptions
-    arrow_map = {'u': 'up', 'd': 'down', 'l': 'left', 'r': 'right'}
-    color_map = {'R': 'red', 'G': 'green', 'B': 'blue', 'Y': 'yellow'}
+  Serial.println("Starting extraction...");
+  extractData(data);
+  Serial.println("Extraction complete.");
+}
 
-    arrow_description = arrow_map.get(arrow, 'unknown')
-    color_description = color_map.get(color, 'unknown')
+void loop() {
+  // Nothing to do here
+}
 
-    return {
-        'start_byte': start_byte,
-        'ID': ID,
-        'temp_data': temp_data,
-        'perm_data': perm_data,
-        'x_axis': x_axis,
-        'y_axis': y_axis,
-        'arrow': arrow_description,
-        'color': color_description,
-        'display_data': display_data
-    }
+void extractData(String data) {
+  // Extracting data without mapping
+  int startPos = data.indexOf('|') + 1;
+  int endPos = data.indexOf('|', startPos);
+  String start_byte = data.substring(startPos, endPos);
 
-# Test the function with the provided data string
-data = "|C|1|8|1|28-0-#u#R96|"
-result = extract_data(data)
-print(result)
-#NOTE- output= {'start_byte': 'C', 'ID': 1, 'temp_data': 8, 'perm_data': 1, 'x_axis': 28, 'y_axis': 0, 'arrow': 'up', 'color': 'red', 'display_data': 96}
+  startPos = endPos + 1;
+  endPos = data.indexOf('|', startPos);
+  int ID = data.substring(startPos, endPos).toInt();
 
-#EXAMPLE-2 ye code jo hai mera ye sahi se work kar rha hai. upar wale code me thoda sa issue hai
-import re
+  startPos = endPos + 1;
+  endPos = data.indexOf('|', startPos);
+  int data_type_code = data.substring(startPos, endPos).toInt();
+  String data_type = (data_type_code == 4) ? "temporary" : "permanent";
 
-def extract_data(data):
-    # Define a regular expression pattern to match the components of the data string
-    pattern = r'\|([A-Z])\|(\d+)\|([48])\|\d\|(\d+)-(\d+)-#([a-zA-Z])#([a-zA-Z])(\d+)\|'
-    match = re.match(pattern, data)
-    
-    if not match:
-        raise ValueError("Data format is incorrect")
+  startPos = endPos + 1;
+  endPos = data.indexOf('|', startPos);
+  int fakedata = data.substring(startPos, endPos).toInt();
 
-    # Extract the matched groups
-    start_byte = match.group(1)
-    ID = int(match.group(2))
-    data_type = 'temporary' if match.group(3) == '4' else 'permanent'
-    x_axis = int(match.group(4))
-    y_axis = int(match.group(5))
-    arrow = match.group(6)
-    color = match.group(7)
-    display_data = int(match.group(8))
+  startPos = endPos + 1;
+  endPos = data.indexOf('-', startPos);
+  int x_axis = data.substring(startPos, endPos).toInt();
 
-    # Map arrow and color to their descriptions
-    arrow_map = {'u': 'up', 'd': 'down', 'l': 'left', 'r': 'right'}
-    color_map = {'R': 'red', 'G': 'green', 'B': 'blue', 'Y': 'yellow'}
+  startPos = endPos + 1;
+  endPos = data.indexOf('-', startPos);
+  int y_axis = data.substring(startPos, endPos).toInt();
 
-    arrow_description = arrow_map.get(arrow, 'unknown')
-    color_description = color_map.get(color, 'unknown')
+  startPos = endPos + 2; // Skip past '-' and '#'
+  endPos = data.indexOf('#', startPos);
+  String arrow = data.substring(startPos, endPos);
 
-    return {
-        'start_byte': start_byte,
-        'ID': ID,
-        'data_type': data_type,
-        'x_axis': x_axis,
-        'y_axis': y_axis,
-        'arrow': arrow_description,
-        'color': color_description,
-        'display_data': display_data
-    }
+  startPos = endPos + 1;
+  endPos = data.indexOf('|', startPos);
+  String colorWithData = data.substring(startPos, endPos);
+  String actualColor = colorWithData.substring(0, 1);
+  int display_data = colorWithData.substring(1).toInt();
 
-# Test the function with the provided data string
+  // Print the extracted data
+  Serial.println("Extracted Data:");
+  Serial.println("Start Byte: " + start_byte);
+  Serial.println("ID: " + String(ID));
+  Serial.println("Data Type: " + data_type);
+  Serial.println("X Axis: " + String(x_axis));
+  Serial.println("Y Axis: " + String(y_axis));
+  Serial.println("Arrow: " + arrow);
+  Serial.println("Color: " + actualColor);
+  Serial.println("Display Data: " + String(display_data));
+}
+
+#EXAMPLE-2  using python without using the any library
 data = "|C|1|4|1|28-0-#u#R96|"
-result = extract_data(data)
-print(result)
-#NOTE- is code perfectly work kar rha hai ayr mujhe ye data de rha hai output me 
-{'start_byte': 'C', 'ID': 1, 'data_type': 'temporary', 'x_axis': 28, 'y_axis': 0, 'arrow': 'up', 'color': 'red', 'display_data': 96}
+
+def extract_data(data):
+    # Extracting data without mapping
+    start_pos = data.find('|') + 1
+    end_pos = data.find('|', start_pos)
+    start_byte = data[start_pos:end_pos]
+
+    start_pos = end_pos + 1
+    end_pos = data.find('|', start_pos)
+    ID = int(data[start_pos:end_pos])
+
+    start_pos = end_pos + 1
+    end_pos = data.find('|', start_pos)
+    data_type_code = int(data[start_pos:end_pos])
+    data_type = "temporary" if data_type_code == 4 else "permanent"
+
+    start_pos = end_pos + 1
+    end_pos = data.find('|', start_pos)
+    fakedata = int(data[start_pos:end_pos])
+
+    start_pos = end_pos + 1
+    end_pos = data.find('-', start_pos)
+    x_axis = int(data[start_pos:end_pos])
+
+    start_pos = end_pos + 1
+    end_pos = data.find('-', start_pos)
+    y_axis = int(data[start_pos:end_pos])
+
+    start_pos = end_pos + 2  # Skip past '-' and '#'
+    end_pos = data.find('#', start_pos)
+    arrow = data[start_pos:end_pos]
+
+    start_pos = end_pos + 1
+    end_pos = data.find('|', start_pos)
+    colorWithData = data[start_pos:end_pos]
+    actualColor = colorWithData[0]
+    display_data = int(colorWithData[1:])
+
+    # Print the extracted data
+    print("Extracted Data:")
+    print("Start Byte:", start_byte)
+    print("ID:", ID)
+    print("Data Type:", data_type)
+    print("X Axis:", x_axis)
+    print("Y Axis:", y_axis)
+    print("Arrow:", arrow)
+    print("Color:", actualColor)
+    print("Display Data:", display_data)
+
+# Call the function with the data string
+extract_data(data)
+
+#EXAMPLE-3 using re library python code to extract the data
+import re
+
+data = "|C|1|8|1|28-0-#u#R96|"
+
+def extract_data(data):
+    # Define the regex pattern for extracting data
+    pattern = r"\|([A-Z])\|(\d+)\|(\d+)\|(\d+)\|(\d+)-(\d+)-#(.*?)#(.*?)\|"
+
+    # Use re.match to extract data
+    match = re.match(pattern, data)
+    if match:
+        start_byte = match.group(1)
+        ID = int(match.group(2))
+        data_type_code = int(match.group(3))
+        data_type = "temporary" if data_type_code == 4 else "permanent"
+        fakedata = int(match.group(4))
+        x_axis = int(match.group(5))
+        y_axis = int(match.group(6))
+        arrow = match.group(7)
+        actualColor = match.group(8)[0]
+        display_data = int(match.group(8)[1:])
+
+        # Print the extracted data
+        print("Extracted Data:")
+        print("Start Byte:", start_byte)
+        print("ID:", ID)
+        print("Data Type:", data_type)
+        print("Fake Data:", fakedata)
+        print("X Axis:", x_axis)
+        print("Y Axis:", y_axis)
+        print("Arrow:", arrow)
+        print("Color:", actualColor)
+        print("Display Data:", display_data)
+    else:
+        print("No match found for the pattern.")
+
+# Call the function with the data string
+extract_data(data)
+
+#EXAMPLE-4 in a single line of code how can i do the multiple protocol communication
+import machine
+import time
+import re
+from machine import UART
+
+# Initialize UART
+uart = UART(1, baudrate=9600, tx=17, rx=16)
+
+# GPIO pin setup
+# Define any pins needed for controlling hardware (e.g., screen, LEDs)
+
+# Global variables
+system_id = None
+
+# Functions to handle each protocol
+def set_system_id(data):
+    global system_id
+    pattern = r"\|S\|(\d+)E"
+    match = re.match(pattern, data)
+    if match:
+        system_id = int(match.group(1))
+        print("System ID set to:", system_id)
+    else:
+        print("Invalid ID format")
+
+def clear_screen(data):
+    pattern = r"\|C\|(\d+)\|6\|"
+    match = re.match(pattern, data)
+    if match:
+        id_to_clear = int(match.group(1))
+        if id_to_clear == system_id:
+            print("Clearing screen...")
+            # Implement actual screen clearing logic here
+        else:
+            print("ID mismatch, not clearing screen")
+    else:
+        print("Invalid clear screen format")
+
+def shift_character(data):
+    pattern = r"\|F\|(\d+)E"
+    match = re.match(pattern, data)
+    if match:
+        position = int(match.group(1))
+        print("Shifting character to position:", position)
+        # Implement actual character shifting logic here
+    else:
+        print("Invalid shift character format")
+
+def custom_protocol(data):
+    pattern = r"\|C\|1\|4\|(\d+)\-(\d+)\-#(.*?)#(.*?)\|"
+    match = re.match(pattern, data)
+    if match:
+        data1 = int(match.group(1))
+        data2 = int(match.group(2))
+        data3 = match.group(3)
+        data4 = match.group(4)
+
+        # Print or process the extracted data
+        print("Custom Protocol Data:")
+        print("Data1:", data1)
+        print("Data2:", data2)
+        print("Data3:", data3)
+        print("Data4:", data4)
+    else:
+        print("Invalid custom protocol format")
+
+def process_data(data):
+    if data.startswith("|S|"):
+        set_system_id(data)
+    elif data.startswith("|C|"):
+        if "|C|1|4|" in data:
+            custom_protocol(data)
+        elif "|C|1|6|" in data:
+            clear_screen(data)
+        else:
+            print("Unknown command")
+    elif data.startswith("|F|"):
+        shift_character(data)
+    else:
+        print("Unknown command")
+
+# Main loop
+while True:
+    if uart.any():
+        data = uart.read().decode('utf-8').strip()
+        print("Received data:", data)
+        process_data(data)
+    time.sleep(1)
+
+#NOTE- means it will work for |S|1E for setting the device id, |C|1|6| for clering the screen, |C|1|4|1|28-0-#u#R97| for displaying the data, |F|0E for shifting the character in the left side means it will start with 0,0 rows and columns
