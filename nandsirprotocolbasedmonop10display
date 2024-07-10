@@ -157,3 +157,95 @@ def extract_data(data):
 
 # Call the function with the data string
 extract_data(data)
+
+#EXAMPLE-4 in a single line of code how can i do the multiple protocol communication
+import machine
+import time
+import re
+from machine import UART
+
+# Initialize UART
+uart = UART(1, baudrate=9600, tx=17, rx=16)
+
+# GPIO pin setup
+# Define any pins needed for controlling hardware (e.g., screen, LEDs)
+
+# Global variables
+system_id = None
+
+# Functions to handle each protocol
+def set_system_id(data):
+    global system_id
+    pattern = r"\|S\|(\d+)E"
+    match = re.match(pattern, data)
+    if match:
+        system_id = int(match.group(1))
+        print("System ID set to:", system_id)
+    else:
+        print("Invalid ID format")
+
+def clear_screen(data):
+    pattern = r"\|C\|(\d+)\|6\|"
+    match = re.match(pattern, data)
+    if match:
+        id_to_clear = int(match.group(1))
+        if id_to_clear == system_id:
+            print("Clearing screen...")
+            # Implement actual screen clearing logic here
+        else:
+            print("ID mismatch, not clearing screen")
+    else:
+        print("Invalid clear screen format")
+
+def shift_character(data):
+    pattern = r"\|F\|(\d+)E"
+    match = re.match(pattern, data)
+    if match:
+        position = int(match.group(1))
+        print("Shifting character to position:", position)
+        # Implement actual character shifting logic here
+    else:
+        print("Invalid shift character format")
+
+def custom_protocol(data):
+    pattern = r"\|C\|1\|4\|(\d+)\-(\d+)\-#(.*?)#(.*?)\|"
+    match = re.match(pattern, data)
+    if match:
+        data1 = int(match.group(1))
+        data2 = int(match.group(2))
+        data3 = match.group(3)
+        data4 = match.group(4)
+
+        # Print or process the extracted data
+        print("Custom Protocol Data:")
+        print("Data1:", data1)
+        print("Data2:", data2)
+        print("Data3:", data3)
+        print("Data4:", data4)
+    else:
+        print("Invalid custom protocol format")
+
+def process_data(data):
+    if data.startswith("|S|"):
+        set_system_id(data)
+    elif data.startswith("|C|"):
+        if "|C|1|4|" in data:
+            custom_protocol(data)
+        elif "|C|1|6|" in data:
+            clear_screen(data)
+        else:
+            print("Unknown command")
+    elif data.startswith("|F|"):
+        shift_character(data)
+    else:
+        print("Unknown command")
+
+# Main loop
+while True:
+    if uart.any():
+        data = uart.read().decode('utf-8').strip()
+        print("Received data:", data)
+        process_data(data)
+    time.sleep(1)
+
+#NOTE- means it will work for |S|1E for setting the device id, |C|1|6| for clering the screen, |C|1|4|1|28-0-#u#R97| for displaying the data, |F|0E for shifting the character in the left side means it will start with 0,0 rows and columns
