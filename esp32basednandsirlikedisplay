@@ -1,0 +1,283 @@
+# isme maine nand sir ke jaisa hi same ek display banane ka try kiya hai. abhi maine ise run krke nahi dekha hai.
+#include <Preferences.h>
+#include <DMD32.h>
+#include "fonts/SystemFont5x7.h"
+#include "fonts/Arial_Black_16.h"
+
+// Define UART pins
+#define RX_PIN 32
+#define TX_PIN 33
+
+// Initialize UART
+HardwareSerial mySerial(2);
+
+// Preferences for permanent storage
+Preferences preferences;
+
+// Define arrows
+const byte upArrow[] PROGMEM = {
+  16, 13,
+  B00000001, B10000000,
+  B00000011, B11000000,
+  B00000111, B11100000,
+  B00001111, B11110000,
+  B00011111, B11111000,
+  B00111111, B11111100,
+  B01111111, B11111110,
+  B11111111, B11111111,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+};
+
+const byte downArrow[] PROGMEM = {
+  16, 13,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B11111111, B11111111,
+  B01111111, B11111110,
+  B00111111, B11111100,
+  B00011111, B11111000,
+  B00001111, B11110000,
+  B00000111, B11100000,
+  B00000011, B11000000,
+  B00000001, B10000000,
+};
+
+const byte leftArrow[] PROGMEM = {
+  16, 13,
+  B00000000, B10000000,
+  B00000000, B11000000,
+  B00000000, B11100000,
+  B00000000, B11110000,
+  B11111111, B11111000,
+  B11111111, B11111100,
+  B11111111, B11111110,
+  B11111111, B11111110,
+  B00000000, B11111100,
+  B00000000, B11111000,
+  B00000000, B11110000,
+  B00000000, B11100000,
+  B00000000, B10000000,
+};
+
+const byte rightArrow[] PROGMEM = {
+  16, 13,
+  B00000001, B00000000,
+  B00000011, B00000000,
+  B00000111, B00000000,
+  B00001111, B00000000,
+  B00011111, B11111111,
+  B00111111, B11111111,
+  B01111111, B11111111,
+  B01111111, B11111111,
+  B00111111, B00000000,
+  B00011111, B00000000,
+  B00001111, B00000000,
+  B00000111, B00000000,
+  B00000011, B00000000,
+};
+
+// DMD display setup
+#define DISPLAYS_ACROSS 1
+#define DISPLAYS_DOWN 1
+DMD dmd(DISPLAYS_ACROSS, DISPLAYS_DOWN);
+
+hw_timer_t *timer = NULL;
+
+void IRAM_ATTR triggerScan() {
+  dmd.scanDisplayBySPI();
+}
+
+void setup() {
+  Serial.begin(115200);
+  mySerial.begin(9600, SERIAL_8N1, RX_PIN, TX_PIN);
+  preferences.begin("storage", false);
+  loadPermanentData();
+  uint8_t cpuClock = ESP.getCpuFreqMHz();
+  timer = timerBegin(0, cpuClock, true);
+  timerAttachInterrupt(timer, &triggerScan, true);
+  timerAlarmWrite(timer, 300, true);
+  timerAlarmEnable(timer);
+}
+
+void drawArrow(const byte *arrow, int x, int y) {
+  dmd.drawBitmap(x, y, arrow, 16, 13, GRAPHICS_NORMAL);
+}
+
+void displayDataAtCoordinates(int x, int y, const String& data) {
+  dmd.selectFont(SystemFont5x7);
+  dmd.drawString(x, y, data.c_str(), data.length(), GRAPHICS_NORMAL);
+}
+
+void customProtocol(String data) {
+  int startPos = data.indexOf('|') + 3;
+  int endPos = data.indexOf('|', startPos);
+  int ID = data.substring(startPos, endPos).toInt();
+
+  startPos = endPos + 1;
+  endPos = data.indexOf('|', startPos);
+  int type_code = data.substring(startPos, endPos).toInt();
+  String data_type = (type_code == 4) ? "temporary" : "permanent";
+
+  startPos = endPos + 1;
+  endPos = data.indexOf('|', startPos);
+  int fakedata = data.substring(startPos, endPos).toInt();
+
+  startPos = endPos + 1;
+  endPos = data.indexOf('-', startPos);
+  int x_axis = data.substring(startPos, endPos).toInt();
+
+  startPos = endPos + 1;
+  endPos = data.indexOf('-', startPos);
+  int y_axis = data.substring(startPos, endPos).toInt();
+
+  startPos = endPos + 2;
+  endPos = data.indexOf('#', startPos);
+  String arrow = data.substring(startPos, endPos);
+
+  startPos = endPos + 1;
+  endPos = data.indexOf('|', startPos);
+  String colorWithData = data.substring(startPos, endPos);
+  String actualColor = colorWithData.substring(0, 1);
+  int display_data = colorWithData.substring(1).toInt();
+
+  if (type_code == 8) 
+  {
+    String data_to_store = "|C|" + String(ID) + "|" + String(type_code) + "|" + String(fakedata) + "|" + String(x_axis) + "-" + String(y_axis) + "-#" + arrow + "#" + actualColor + String(display_data) + "|";
+    savePermanentData(data_to_store);
+    Serial.println("Permanent data stored: " + data_to_store);
+  }
+
+  dmd.clearScreen(true);
+  
+  if (type_code == 4) {
+    if (arrow == "u") {
+      drawArrow(upArrow, 0, 0);
+    } else if (arrow == "d") {
+      drawArrow(downArrow, 0, 0);
+    } else if (arrow == "l") {
+      drawArrow(leftArrow, 0, 0);
+    } else if (arrow == "r") {
+      drawArrow(rightArrow, 0, 0);
+    }
+    
+    displayDataAtCoordinates(x_axis, y_axis, String(display_data));
+  }
+}
+
+void processData(String data) 
+{
+  data.trim();
+
+  if (data.startsWith("|S|")) 
+  {
+    setSystemID(data);
+  } 
+  
+  else if (data.startsWith("|C|")) 
+  {
+    if (data.indexOf("|6|") != -1) 
+    {
+      clearScreen(data);
+    } 
+    else 
+    {
+      customProtocol(data);
+    }
+  } 
+  
+  else if (data.startsWith("|F|")) 
+  {
+    shiftCharacter(data);
+  } 
+  else 
+  {
+    Serial.println("Unknown command");
+  }
+}
+
+// Function to save permanent data to Preferences
+void savePermanentData(String data) {
+  int index = preferences.getUInt("index", 0);
+  String key = "data" + String(index);
+  preferences.putString(key.c_str(), data);
+  preferences.putUInt("index", index + 1);
+}
+
+// Function to load all permanent data from Preferences
+void loadPermanentData() {
+  int index = preferences.getUInt("index", 0);
+  for (int i = 0; i < index; i++) {
+    String key = "data" + String(i);
+    String data = preferences.getString(key.c_str(), "");
+    Serial.println("Loaded permanent data: " + data);
+  }
+}
+
+// Function to set system ID
+void setSystemID(String data) {
+  int startPos = data.indexOf('|') + 3; // Skip past "|S|"
+  int endPos = data.indexOf('|', startPos);
+  int id = data.substring(startPos, endPos).toInt();
+  preferences.putInt("system_id", id);
+  Serial.println("System ID set to: " + String(id));
+}
+
+// Function to clear the screen
+void clearScreen(String data) {
+  int startPos = data.indexOf('|') + 3; // Skip past "|C|"
+  int endPos = data.indexOf('|', startPos);
+  int id_to_clear = data.substring(startPos, endPos).toInt();
+  int system_id = preferences.getInt("system_id", -1);
+
+  if (id_to_clear == system_id) {
+    dmd.clearScreen(true);
+    Serial.println("Screen cleared for ID: " + String(id_to_clear));
+  } else {
+    Serial.println("ID not matched for clearing screen");
+  }
+}
+
+// Function to shift character
+void shiftCharacter(String data) {
+  int startPos = data.indexOf('|') + 3; // Skip past "|F|"
+  int endPos = data.indexOf('|', startPos);
+  String idStr = data.substring(startPos, endPos);
+  int id_to_shift = idStr.toInt();
+
+  startPos = endPos + 1;
+  endPos = data.indexOf('|', startPos);
+  char shift_character = data.charAt(startPos);
+
+  int system_id = preferences.getInt("system_id", -1);
+
+  if (id_to_shift == system_id) {
+    dmd.selectFont(Arial_Black_16);
+    dmd.drawMarquee(&shift_character, 1, (32 * DISPLAYS_ACROSS) - 1, 0);
+    long start = millis();
+    long timer = millis();
+    boolean ret = false;
+    while (!ret) {
+      if ((timer + 30) < millis()) {
+        ret = dmd.stepMarquee(-1, 0);
+        timer = millis();
+      }
+    }
+    dmd.clearScreen(true);
+    Serial.println("Character shifted for ID: " + String(id_to_shift));
+  } else {
+    Serial.println("ID not matched for shifting character");
+  }
+}
+
+void loop() {
+  if (mySerial.available() > 0) {
+    String data = mySerial.readString();
+    processData(data);
+  }
+}
