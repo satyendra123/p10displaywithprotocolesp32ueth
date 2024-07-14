@@ -159,24 +159,22 @@ def extract_data(data):
 extract_data(data)
 
 #EXAMPLE-4 in a single line of code how can i do the multiple protocol communication
+'''
+#EX-1 in this we just using the protocol and make it work. we are using the protocol to make it dynamic. so that we don't need to change the code again and again
 import machine
 import time
 import re
 from machine import UART
 
 # Initialize UART
-uart = UART(1, baudrate=9600, tx=17, rx=16)
+uart = UART(2, baudrate=9600, tx=33, rx=32)
 
-# GPIO pin setup
-# Define any pins needed for controlling hardware (e.g., screen, LEDs)
-
-# Global variables
 system_id = None
 
-# Functions to handle each protocol
+# Function to set system ID
 def set_system_id(data):
     global system_id
-    pattern = r"\|S\|(\d+)E"
+    pattern = rb"\|S\|(\d+)E"
     match = re.match(pattern, data)
     if match:
         system_id = int(match.group(1))
@@ -184,8 +182,9 @@ def set_system_id(data):
     else:
         print("Invalid ID format")
 
+# Function to clear screen based on ID match
 def clear_screen(data):
-    pattern = r"\|C\|(\d+)\|6\|"
+    pattern = rb"\|C\|(\d+)\|6\|"
     match = re.match(pattern, data)
     if match:
         id_to_clear = int(match.group(1))
@@ -197,8 +196,9 @@ def clear_screen(data):
     else:
         print("Invalid clear screen format")
 
+# Function to shift character based on position
 def shift_character(data):
-    pattern = r"\|F\|(\d+)E"
+    pattern = rb"\|F\|(\d+)E"
     match = re.match(pattern, data)
     if match:
         position = int(match.group(1))
@@ -207,45 +207,209 @@ def shift_character(data):
     else:
         print("Invalid shift character format")
 
+# Function to handle custom protocol command
 def custom_protocol(data):
-    pattern = r"\|C\|1\|4\|(\d+)\-(\d+)\-#(.*?)#(.*?)\|"
+    pattern = rb"\|C\|(\d+)\|(\d+)\|(\d+)\|(\d+)-(\d+)-#(.*?)#(.*?)\|"
     match = re.match(pattern, data)
     if match:
-        data1 = int(match.group(1))
-        data2 = int(match.group(2))
-        data3 = match.group(3)
-        data4 = match.group(4)
-
-        # Print or process the extracted data
-        print("Custom Protocol Data:")
-        print("Data1:", data1)
-        print("Data2:", data2)
-        print("Data3:", data3)
-        print("Data4:", data4)
+        ID = int(match.group(1))
+        type_code = int(match.group(2))
+        data_type = "temporary" if type_code == 4 else "permanent"
+        fakedata = int(match.group(3))
+        x_axis = int(match.group(4))
+        y_axis = int(match.group(5))
+        arrow = match.group(6).decode('utf-8')
+        actualColor = chr(int(match.group(7)[0]))
+        display_data = int(match.group(7)[1:])
+        # Print the extracted data
+        print("Extracted Data:")
+        print("ID:", ID)
+        print("Data Type:", data_type)
+        print("Fake Data:", fakedata)
+        print("X Axis:", x_axis)
+        print("Y Axis:", y_axis)
+        print("Arrow:", arrow)
+        print("Color:", actualColor)
+        print("Display Data:", display_data)
     else:
         print("Invalid custom protocol format")
 
+# Function to process incoming data
 def process_data(data):
-    if data.startswith("|S|"):
-        set_system_id(data)
-    elif data.startswith("|C|"):
-        if "|C|1|4|" in data:
-            custom_protocol(data)
-        elif "|C|1|6|" in data:
-            clear_screen(data)
+    try:
+        if isinstance(data, bytes):
+            data_str = data.decode('utf-8').strip()
+        else:
+            data_str = data.strip()  # If already decoded or for debugging
+
+        if data_str.startswith("|S|"):
+            set_system_id(data)
+        elif data_str.startswith("|C|"):
+            # Check for clear screen command
+            if "|C|" in data_str and "|6|" in data_str:
+                clear_screen(data)
+            # Check for custom protocol command
+            elif "|C|" in data_str:
+                custom_protocol(data)
+            else:
+                print("Unknown command")
+        elif data_str.startswith("|F|"):
+            shift_character(data)
         else:
             print("Unknown command")
-    elif data.startswith("|F|"):
-        shift_character(data)
-    else:
-        print("Unknown command")
+    except UnicodeError as e:
+        print("Unicode decoding error:", e)
 
-# Main loop
+# Main loop to continuously read UART data
 while True:
     if uart.any():
-        data = uart.read().decode('utf-8').strip()
-        print("Received data:", data)
+        data = uart.read()
+        print("Received data:", data)  # Print raw bytes received
         process_data(data)
     time.sleep(1)
+'''
 
-#NOTE- means it will work for |S|1E for setting the device id, |C|1|6| for clering the screen, |C|1|4|1|28-0-#u#R97| for displaying the data, |F|0E for shifting the character in the left side means it will start with 0,0 rows and columns
+#EX-2 for this code i am storing the |C|1|8|1|28-0-#u#R87| data into the preference memory and update it each time for storing the permanent data.
+
+import machine
+import time
+import re
+from machine import UART
+
+# Initialize UART
+uart = UART(2, baudrate=9600, tx=33, rx=32)
+
+# File path for storing permanent data
+PERMANENT_DATA_FILE = "/permanent_data.txt"
+
+# Function to save permanent data to file
+def save_permanent_data(data):
+    with open(PERMANENT_DATA_FILE, "a") as f:
+        f.write(data + "\n")
+
+# Function to load permanent data from file (if needed)
+def load_permanent_data():
+    try:
+        with open(PERMANENT_DATA_FILE, "r") as f:
+            return f.readlines()
+    except OSError:
+        return []
+
+# Function to set system ID
+def set_system_id(data):
+    global system_id
+    pattern = rb"\|S\|(\d+)E"
+    match = re.match(pattern, data)
+    if match:
+        system_id = int(match.group(1))
+        print("System ID set to:", system_id)
+    else:
+        print("Invalid ID format")
+
+# Function to clear screen based on ID
+def clear_screen(data):
+    pattern = rb"\|C\|(\d+)\|6\|"
+    match = re.match(pattern, data)
+    if match:
+        id_to_clear = int(match.group(1))
+        if id_to_clear == system_id:
+            print("Clearing screen...")
+            # Implement actual screen clearing logic here
+        else:
+            print("ID mismatch, not clearing screen")
+    else:
+        print("Invalid clear screen format")
+
+# Function to shift character to a specific position
+def shift_character(data):
+    pattern = rb"\|F\|(\d+)E"
+    match = re.match(pattern, data)
+    if match:
+        position = int(match.group(1))
+        print("Shifting character to position:", position)
+        # Implement actual character shifting logic here
+    else:
+        print("Invalid shift character format")
+
+# Function to handle custom protocol data
+def custom_protocol(data):
+    pattern = rb"\|C\|(\d+)\|(\d+)\|(\d+)\|(\d+)-(\d+)-#(.*?)#(.*?)\|"
+    match = re.match(pattern, data)
+    if match:
+        ID = int(match.group(1))
+        type_code = int(match.group(2))
+        fakedata = int(match.group(3))
+        x_axis = int(match.group(4))
+        y_axis = int(match.group(5))
+        arrow = match.group(6).decode('utf-8')  # Decode bytes to string for arrow
+        actualColor = chr(int(match.group(7)[0]))  # Convert ASCII value to character for color
+        display_data = int(match.group(7)[1:])  # Remaining characters as integer
+
+        # Determine data type and handle accordingly
+        if type_code == 4:
+            data_type = "temporary"
+            # Process normally for temporary data display
+        elif type_code == 8:
+            data_type = "permanent"
+            # Save data to file for permanent storage
+            data_to_store = f"|C|{ID}|{type_code}|{fakedata}|{x_axis}-{y_axis}-#{arrow}#{actualColor}{display_data}|"
+            save_permanent_data(data_to_store)
+            print("Permanent data stored:", data_to_store)
+        else:
+            print("Unknown data type")
+
+        # Print the extracted data
+        print("Extracted Data:")
+        print("ID:", ID)
+        print("Data Type:", data_type)
+        print("Fake Data:", fakedata)
+        print("X Axis:", x_axis)
+        print("Y Axis:", y_axis)
+        print("Arrow:", arrow)
+        print("Color:", actualColor)
+        print("Display Data:", display_data)
+    else:
+        print("Invalid custom protocol format")
+
+# Function to process incoming data
+def process_data(data):
+    try:
+        if isinstance(data, bytes):
+            data_str = data.decode('utf-8').strip()
+        else:
+            data_str = data.strip()  # If already decoded or for debugging
+
+        if data_str.startswith("|S|"):
+            set_system_id(data)
+        elif data_str.startswith("|C|"):
+           # Check for clear screen command
+            if "|C|" in data_str and "|6|" in data_str:
+                clear_screen(data)
+            # Check for custom protocol command
+            elif "|C|" in data_str:
+                custom_protocol(data)
+            else:
+                print("Unknown command")
+        elif data_str.startswith("|F|"):
+            shift_character(data)
+        else:
+            print("Unknown command")
+    except UnicodeError as e:
+        print("Unicode decoding error:", e)
+
+# Main code to ensure file existence and process incoming data
+try:
+    # Check if the file exists or create it if it doesn't
+    with open(PERMANENT_DATA_FILE, "r") as f:
+        pass
+except OSError:
+    with open(PERMANENT_DATA_FILE, "w") as f:
+        pass
+
+# Main loop to process incoming data
+while True:
+    if uart.any():
+        data = uart.read()
+        print("Received data:", data)  # Print raw bytes received
+        process_data(data)
+    time.sleep(1)  # Adjust sleep time as needed
