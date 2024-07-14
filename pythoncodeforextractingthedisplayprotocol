@@ -158,7 +158,7 @@ def extract_data(data):
 # Call the function with the data string
 extract_data(data)
 
-#EXAMPLE-4 in a single line of code how can i do the multiple protocol communication
+#EXAMPLE-4 in a single line of code how can i do the multiple protocol communication. this code is working and tested with the esp32 in micropython by docklight software
 '''
 #EX-1 in this we just using the protocol and make it work. we are using the protocol to make it dynamic. so that we don't need to change the code again and again
 import machine
