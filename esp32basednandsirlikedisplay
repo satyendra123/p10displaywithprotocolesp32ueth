@@ -281,3 +281,212 @@ void loop() {
     processData(data);
   }
 }
+
+#EX-2 
+#include <DMD32.h>
+#include "fonts/SystemFont5x7.h"
+#include "fonts/Arial_black_16.h"
+#include <Preferences.h>
+
+#define DISPLAYS_ACROSS 1
+#define DISPLAYS_DOWN 1
+DMD dmd(DISPLAYS_ACROSS, DISPLAYS_DOWN);
+
+Preferences preferences;
+
+// Arrow symbols in PROGMEM
+const byte upArrow[] PROGMEM = {
+  16, 13,
+  B00000001, B10000000,
+  B00000011, B11000000,
+  B00000111, B11100000,
+  B00001111, B11110000,
+  B00011111, B11111000,
+  B00111111, B11111100,
+  B01111111, B11111110,
+  B11111111, B11111111,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+};
+
+const byte downArrow[] PROGMEM = {
+  16, 13,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B11111111, B11111111,
+  B01111111, B11111110,
+  B00111111, B11111100,
+  B00011111, B11111000,
+  B00001111, B11110000,
+  B00000111, B11100000,
+  B00000011, B11000000,
+  B00000001, B10000000,
+};
+
+const byte leftArrow[] PROGMEM = {
+  16, 13,
+  B00000000, B10000000,
+  B00000000, B11000000,
+  B00000000, B11100000,
+  B00000000, B11110000,
+  B11111111, B11111000,
+  B11111111, B11111100,
+  B11111111, B11111110,
+  B11111111, B11111110,
+  B00000000, B11111100,
+  B00000000, B11111000,
+  B00000000, B11110000,
+  B00000000, B11100000,
+  B00000000, B10000000,
+};
+
+const byte rightArrow[] PROGMEM = {
+  16, 13,
+  B00000001, B00000000,
+  B00000011, B00000000,
+  B00000111, B00000000,
+  B00001111, B00000000,
+  B00011111, B11111111,
+  B00111111, B11111111,
+  B01111111, B11111111,
+  B01111111, B11111111,
+  B00111111, B00000000,
+  B00011111, B00000000,
+  B00001111, B00000000,
+  B00000111, B00000000,
+  B00000011, B00000000,
+};
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Initialize DMD
+  dmd.setBrightness(255);
+  dmd.selectFont(Arial_Black_16);
+
+  // Initialize preferences
+  preferences.begin("myApp", false); // Open preferences with app namespace
+  
+  // Setup timer for display scanning
+  hw_timer_t * timer = NULL;
+  timer = timerBegin(0, 80, true); // 80 MHz timer
+  timerAttachInterrupt(timer, &scanDisplayISR, true);
+  timerAlarmWrite(timer, 3000, true); // 3000 us period
+  timerAlarmEnable(timer);
+}
+
+void loop() {
+  // Example of receiving data (replace with your RS485 or other data handling)
+  if (Serial.available() > 0) {
+    String data = Serial.readString();
+    Serial.println("Received data: " + data);
+    
+    // Example: Process received data
+    displayAndStoreData(data);
+  }
+  // Other continuous operations if needed
+}
+
+void IRAM_ATTR scanDisplayISR() {
+  dmd.scanDisplayBySPI(); // ISR for scanning the display
+}
+
+void displayAndStoreData(String data) {
+  data.trim();
+
+  String storedDeviceId = preferences.getString("device_id", "1");
+
+  int startPos = data.indexOf('|', 3) + 1;
+  int endPos = data.indexOf('|', startPos);
+  String commandId = data.substring(startPos, endPos);
+
+  if (commandId.equals(storedDeviceId)) {
+    startPos = data.indexOf('|', 5) + 1;
+    endPos = data.indexOf('-', startPos);
+    int x_axis = data.substring(startPos, endPos).toInt();
+
+    startPos = endPos + 1;
+    endPos = data.indexOf('-', startPos);
+    int y_axis = data.substring(startPos, endPos).toInt();
+
+    startPos = endPos + 2; // Skip past '-' and '#'
+    endPos = data.indexOf('|', startPos);
+    String dataToDisplay = data.substring(startPos, endPos);
+
+    char arrowDirection = '\0'; // Initialize arrow direction to null character
+
+    // Check if arrow direction is specified in the command
+    if (endPos + 1 < data.length() && data[endPos + 1] == '#') {
+      arrowDirection = data[endPos + 2];
+    }
+
+    if (data.startsWith("|4|")) {
+      // Display temporary data on screen
+      displayData(x_axis, y_axis, dataToDisplay, arrowDirection);
+    } else if (data.startsWith("|8|")) {
+      // Store permanent data in preferences
+      storeData(x_axis, y_axis, dataToDisplay, arrowDirection);
+    } else {
+      Serial.println("Invalid command type.");
+    }
+  } else {
+    Serial.println("Device ID mismatch. Cannot process data.");
+  }
+}
+
+void displayData(int x_axis, int y_axis, String dataToDisplay, char arrowDirection) {
+  // Display arrow based on direction
+  if (arrowDirection != '\0') {
+    const byte *arrowSymbol = nullptr;
+    
+    switch (arrowDirection) {
+      case 'u':
+        arrowSymbol = upArrow;
+        break;
+      case 'b':
+        arrowSymbol = downArrow;
+        break;
+      case 'r':
+        arrowSymbol = rightArrow;
+        break;
+      case 'l':
+        arrowSymbol = leftArrow;
+        break;
+      default:
+        arrowSymbol = nullptr;
+        break;
+    }
+
+    // Display arrow symbol if valid
+    if (arrowSymbol != nullptr) {
+      dmd.drawStaticSymbol(x_axis, y_axis, arrowSymbol, 16, 13, GRAPHICS_NORMAL);
+    }
+  }
+
+  // Display data on screen
+  dmd.drawString(x_axis, y_axis, dataToDisplay.c_str(), GRAPHICS_NORMAL);
+
+  Serial.print("Displayed temporary data at (" + String(x_axis) + ", " + String(y_axis) + "): ");
+  Serial.println(dataToDisplay);
+}
+
+void storeData(int x_axis, int y_axis, String dataToStore, char arrowDirection) {
+  // Store permanent data in preferences or memory
+  preferences.putInt("x_axis", x_axis);
+  preferences.putInt("y_axis", y_axis);
+  preferences.putString("data_to_display", dataToStore);
+  preferences.putChar("arrow_direction", arrowDirection);
+
+  // Display data on screen with arrow if specified
+  displayData(x_axis, y_axis, dataToStore, arrowDirection);
+
+  Serial.print("Stored permanent data at (" + String(x_axis) + ", " + String(y_axis) + "): ");
+  Serial.print(dataToStore);
+  Serial.print(", Arrow Direction: ");
+  Serial.println(arrowDirection);
+}
