@@ -1,0 +1,279 @@
+//EX-1 p10 hub12 display using sp8266
+#include <DMDESP.h>
+#include <fonts/ElektronMart6x8.h>
+#include <fonts/Mono5x7.h>
+
+#define DISPLAYS_WIDE 1 //--> Panel Columns
+#define DISPLAYS_HIGH 1 //--> Panel Rows
+DMDESP Disp(DISPLAYS_WIDE, DISPLAYS_HIGH);
+
+void setup() {
+  Disp.start();
+  Disp.setBrightness(50);
+  Disp.setFont(Mono5x7);
+}
+
+void loop() {
+  Disp.loop();
+  Disp.drawText(4, 0, "UTEH");
+  Scrolling_Text(9, 50);
+}
+
+static char *Text[] = {"NodeMCU ESP8266 P10 LED Panel with DMDESP"};
+
+void Scrolling_Text(int y, uint8_t scrolling_speed) {
+  static uint32_t pM;
+  static uint32_t x;
+  int width = Disp.width();
+  Disp.setFont(Mono5x7);
+  int fullScroll = Disp.textWidth(Text[0]) + width;
+  if((millis() - pM) > scrolling_speed) { 
+    pM = millis();
+    if (x < fullScroll) {
+      ++x;
+    } else {
+      x = 0;
+      return;
+    }
+    Disp.drawText(width - x, y, Text[0]);
+  }  
+}
+
+
+//Ex-2 control the p10 display set the text from the web server
+#include <ESP8266WebServer.h>
+#include <DMDESP.h>
+#include <fonts/ElektronMart6x8.h>
+#include <fonts/Mono5x7.h>
+
+#include "PageIndex.h"
+
+const char* ssid = "NodeMCU_ESP8266";
+const char* password = "goodluck";
+
+ESP8266WebServer server(80);
+
+#define DISPLAYS_WIDE 1
+#define DISPLAYS_HIGH 1
+DMDESP Disp(DISPLAYS_WIDE, DISPLAYS_HIGH);
+
+char *Text[] = {"NodeMCU ESP8266 P10 LED Panel with DMDESP"};
+String Incoming_Text = "";
+
+void handleRoot() {
+  server.send(200, "text/html", MAIN_page); //--> Send web page
+}
+
+void handle_Incoming_Text() {
+  Incoming_Text = server.arg("TextContents");
+  server.send(200, "text/plane", ""); //--> Send web page
+  Process_Incoming_Text();
+}
+
+void Process_Incoming_Text() {
+  delay(500);
+  Serial.println("Incoming text : ");
+  Serial.println(Incoming_Text);
+  Serial.println();
+  int str_len = Incoming_Text.length() + 1;
+  char char_array[str_len];
+  Incoming_Text.toCharArray(char_array, str_len);
+  strcpy(Text[0], char_array);
+  Incoming_Text = "";
+}
+
+void setup(){
+  Serial.begin(115200);
+  delay(500);
+
+  Disp.start();
+  Disp.setBrightness(50);
+  Disp.setFont(Mono5x7);
+  
+  WiFi.softAP(ssid, password);
+  Serial.println("");
+  
+  IPAddress apip = WiFi.softAPIP();
+  Serial.print("Connect your wifi laptop/mobile phone to this NodeMCU Access Point : ");
+  Serial.println(ssid);
+  Serial.print("Visit this IP : ");
+  Serial.print(apip);
+  Serial.println(" in your browser.");
+ 
+  server.on("/", handleRoot);
+  server.on("/setText", handle_Incoming_Text);
+  
+  server.begin(); //--> Start server
+  Serial.println("HTTP server started");
+}
+
+void loop(){
+  server.handleClient();  //--> Handle client requests
+
+  Disp.loop(); //--> Run "Disp.loop" to refresh the LED
+  Disp.drawText(4, 0, "UTEH"); //--> Display text "Disp.drawText(x position, y position, text)"
+  Scrolling_Text(9, 50); //--> Show running text "Scrolling_Text(y position, speed);"
+}
+
+void Scrolling_Text(int y, uint8_t scrolling_speed) {
+  static uint32_t pM;
+  static uint32_t x;
+  int width = Disp.width();
+  Disp.setFont(Mono5x7);
+  int fullScroll = Disp.textWidth(Text[0]) + width;
+  if((millis() - pM) > scrolling_speed) { 
+    pM = millis();
+    if (x < fullScroll) {
+      ++x;
+    } else {
+      x = 0;
+      return;
+    }
+    Disp.drawText(width - x, y, Text[0]);
+  }  
+}
+
+
+//EX-3 isme maine text ko web server se lekar eeprom memory me save karaya hai.
+#include <ESP8266WebServer.h>
+#include <DMDESP.h>
+#include <fonts/ElektronMart6x8.h>
+#include <fonts/Mono5x7.h>
+#include <EEPROM.h>
+
+#include "PageIndex.h"
+
+const char* ssid = "NodeMCU_ESP8266";
+const char* password = "goodluck";
+
+ESP8266WebServer server(80);
+
+#define DISPLAYS_WIDE 1
+#define DISPLAYS_HIGH 1
+DMDESP Disp(DISPLAYS_WIDE, DISPLAYS_HIGH);
+
+
+char *Text[] = {"NodeMCU ESP8266"}; //--> Variable for scrolling Text. Don't leave this variable blank
+String Incoming_Text = ""; //--> Variable to hold the text that is sent from a web server (web page)
+String Text_To_EEPROM = "NodeMCU ESP8266"; //--> Text variables stored in EEPROM
+String Text_From_EEPROM = ""; //--> Variable to hold Text data read from EEPROM for display
+
+void handleRoot() {
+  server.send(200, "text/html", MAIN_page); //--> Send web page
+}
+
+void handle_Incoming_Text() 
+{
+  Incoming_Text = server.arg("TextContents");
+  server.send(200, "text/plane", "");
+  
+  if (Incoming_Text.substring(0,5) == "ATTX:") { 
+    Text_To_EEPROM = Incoming_Text.substring(5, Incoming_Text.length());
+    delay(10);
+    write_String_to_EEPROM(0, Text_To_EEPROM);
+    delay(10);
+    Text_From_EEPROM = read_String_from_EEPROM(0);
+    delay(100);
+    Process_Incoming_Text(); 
+  }
+
+}
+
+void Process_Incoming_Text() {
+  delay(500);
+  Serial.println("Incoming text : ");
+  Serial.println(Incoming_Text);
+  Serial.println();
+  int str_len = Text_From_EEPROM.length() + 1;
+  char char_array[str_len];
+  Text_From_EEPROM.toCharArray(char_array, str_len);
+  strcpy(Text[0], char_array);
+  Incoming_Text = "";
+  Text_To_EEPROM = "";
+  Text_From_EEPROM = "";
+}
+
+void setup(){
+  Serial.begin(115200);
+  delay(500);
+
+  EEPROM.begin(512);
+  delay(500);
+
+  Disp.start();
+  Disp.setBrightness(50);
+  Disp.setFont(Mono5x7);
+  
+  WiFi.softAP(ssid, password);
+  Serial.println("");
+  
+  IPAddress apip = WiFi.softAPIP(); //--> Get the IP server
+  Serial.print("Connect your wifi laptop/mobile phone to this NodeMCU Access Point : ");
+  Serial.println(ssid);
+  Serial.print("Visit this IP : ");
+  Serial.print(apip); //--> Prints the IP address of the server to be visited
+  Serial.println(" in your browser.");
+ 
+  server.on("/", handleRoot);
+  server.on("/setText", handle_Incoming_Text);
+  
+  server.begin(); //--> Start server
+  Serial.println("HTTP server started");
+
+  Text_From_EEPROM = read_String_from_EEPROM(0);
+  delay(100);
+  Process_Incoming_Text();
+}
+
+void loop(){
+  server.handleClient();
+
+  Disp.loop();
+  Disp.drawText(4, 0, "UTEH");
+  Scrolling_Text(9, 50);
+}
+
+void Scrolling_Text(int y, uint8_t scrolling_speed) {
+  static uint32_t pM;
+  static uint32_t x;
+  int width = Disp.width();
+  Disp.setFont(Mono5x7);
+  int fullScroll = Disp.textWidth(Text[0]) + width;
+  if((millis() - pM) > scrolling_speed) { 
+    pM = millis();
+    if (x < fullScroll) {
+      ++x;
+    } else {
+      x = 0;
+      return;
+    }
+    Disp.drawText(width - x, y, Text[0]);
+  }  
+}
+
+void write_String_to_EEPROM(char add,String data) {
+  int _size = data.length();
+  int i;
+  for(i=0;i<_size;i++)
+  {
+    EEPROM.write(add+i,data[i]);
+  }
+  EEPROM.write(add+_size,'\0');
+  EEPROM.commit();
+}
+
+String read_String_from_EEPROM(char add) {
+  int i;
+  char data[100]; //Max 100 Bytes
+  int len=0;
+  unsigned char k;
+  k=EEPROM.read(add);
+  while(k != '\0' && len<500)
+  {    
+    k=EEPROM.read(add+len);
+    data[len]=k;
+    len++;
+  }
+  data[len]='\0';
+  return String(data);
+}
