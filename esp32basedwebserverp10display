@@ -1,0 +1,169 @@
+# control the p10 display using esp32 webserver
+#include <WiFi.h>
+#include <WebServer.h>
+#include <Preferences.h>
+#include <DMD32.h>
+#include <fonts/ElektronMart6x8.h>
+#include <fonts/Mono5x7.h>
+
+#include "PageIndex.h"
+
+const char* ssid = "ESP32_AP";
+const char* password = "goodluck";
+
+WebServer server(80);
+Preferences preferences;
+DMD32 Disp(1, 1);
+
+int x_position = 4; // Default x position
+int y_position = 0; // Default y position
+int text_shift = 0; // Default text shift amount
+char Text[256] = "Default Text";
+
+void handleRoot() {
+  server.send(200, "text/html", MAIN_page); // Send web page
+}
+
+void handle_SetTextPosition() {
+  x_position = server.arg("x").toInt();
+  y_position = server.arg("y").toInt();
+  preferences.putInt("x_position", x_position);
+  preferences.putInt("y_position", y_position);
+  server.send(200, "text/plain", ""); // Send response
+}
+
+void handle_SetText() {
+  String incoming_text = server.arg("text");
+  strncpy(Text, incoming_text.c_str(), sizeof(Text));
+  preferences.putString("stored_text", incoming_text);
+  server.send(200, "text/plain", ""); // Send response
+}
+
+void handle_ShiftText() {
+  text_shift = server.arg("shift").toInt();
+  server.send(200, "text/plain", ""); // Send response
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+
+  Disp.start();
+  Disp.setBrightness(50);
+  Disp.setFont(Mono5x7);
+
+  preferences.begin("my-app", false);
+  x_position = preferences.getInt("x_position", 4);
+  y_position = preferences.getInt("y_position", 0);
+  text_shift = preferences.getInt("text_shift", 0);
+  String storedText = preferences.getString("stored_text", "Default Text");
+  strncpy(Text, storedText.c_str(), sizeof(Text));
+
+  WiFi.softAP(ssid, password);
+  Serial.println("");
+  
+  IPAddress apip = WiFi.softAPIP();
+  Serial.print("Connect your WiFi laptop/mobile phone to this ESP32 Access Point: ");
+  Serial.println(ssid);
+  Serial.print("Visit this IP: ");
+  Serial.print(apip);
+  Serial.println(" in your browser.");
+ 
+  server.on("/", handleRoot);
+  server.on("/setTextPosition", handle_SetTextPosition);
+  server.on("/setText", handle_SetText);
+  server.on("/shiftText", handle_ShiftText);
+  
+  server.begin(); // Start server
+  Serial.println("HTTP server started");
+}
+
+void loop() {
+  server.handleClient();  // Handle client requests
+
+  Disp.loop(); // Run "Disp.loop" to refresh the LED
+  int shifted_x = x_position - text_shift; // Calculate shifted x position
+  Disp.drawText(shifted_x, y_position, Text); // Display text at shifted position
+}
+
+#indexpage.h in this i will write the html code
+const char MAIN_page[] PROGMEM = R"=====(
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      html {
+        font-family: Arial;
+        display: inline-block;
+        margin: 0px auto;
+        text-align: center;
+      }
+
+      h1 { font-size: 2.0rem; color:#2980b9;}
+      
+      .buttonSend {
+        display: inline-block;
+        padding: 15px 25px;
+        font-size: 24px;
+        font-weight: bold;
+        cursor: pointer;
+        text-align: center;
+        text-decoration: none;
+        outline: none;
+        color: #fff;
+        background-color: #4CAF50;
+        border: none;
+        border-radius: 15px;
+        box-shadow: 0 5px #999;
+      }
+      .buttonSend:hover {background-color: #3e8e41}
+      .buttonSend:active {
+        background-color: #3e8e41;
+        box-shadow: 0 1px #666;
+        transform: translateY(4px);
+      }
+    </style>
+  </head>
+  
+  <body>
+    <div>
+      <h1>ESP32 P10 LED Panel</h1>
+      <h2>Enter the Text and Position:</h2><br>
+      <input type="number" id="xPosition" name="xPosition" placeholder="X Position"><br><br>
+      <input type="number" id="yPosition" name="yPosition" placeholder="Y Position"><br><br>
+      <textarea id="TextBox" name="TextBox" rows="4" cols="50"></textarea><br><br>
+      <input type="number" id="textShift" name="textShift" placeholder="Text Shift"><br><br>
+    </div>
+      
+    <div>
+      <button type="button" class="buttonSend" onclick="sendData()">Send Text and Position</button>
+      <button type="button" class="buttonSend" onclick="sendShift()">Shift Text Backward</button>
+    </div>
+
+    <script>
+      function sendData() {
+        var x = document.getElementById("xPosition").value;
+        var y = document.getElementById("yPosition").value;
+        var text = document.getElementById("TextBox").value;
+        
+        var xhttp1 = new XMLHttpRequest();
+        xhttp1.open("GET", "setTextPosition?x=" + x + "&y=" + y, true);
+        xhttp1.send(); 
+        
+        var xhttp2 = new XMLHttpRequest();
+        xhttp2.open("GET", "setText?text=" + text, true);
+        xhttp2.send();
+      }
+
+      function sendShift() {
+        var shift = document.getElementById("textShift").value;
+        
+        var xhttp = new XMLHttpRequest();
+        xhttp.open("GET", "shiftText?shift=" + shift, true);
+        xhttp.send();
+      }
+    </script>
+  </body>
+</html>
+)=====";
