@@ -100,19 +100,19 @@ void setup() {
 }
 
 void loop() {
-  server.handleClient();  // Handle client requests
+  server.handleClient();
 
   if (clearScreen) {
-    Disp.clear(); // Clear the display
-    clearScreen = false; // Reset clear flag
+    Disp.clear();
+    clearScreen = false;
   }
 
-  Disp.loop(); // Run "Disp.loop" to refresh the LED
+  Disp.loop();
 
-  int shifted_x = x_position - text_shift; // Calculate shifted x position
-  Disp.drawText(shifted_x, y_position, Text); // Display text at shifted position
+  int shifted_x = x_position - text_shift;
+  Disp.drawText(shifted_x, y_position, Text);
 
-  Disp.drawText(temp_x, temp_y, TempText); // Display temporary text at specified position
+  Disp.drawText(temp_x, temp_y, TempText);
 }
 
 #indexpage.h in this i will write the html code
