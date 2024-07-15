@@ -8,8 +8,8 @@
 
 #include "PageIndex.h"
 
-const char* ssid = "ESP32_AP";
-const char* password = "goodluck";
+const char* ssid = "Airtel_tejv_3002";
+const char* password = "air73137";
 
 WebServer server(80);
 Preferences preferences;
