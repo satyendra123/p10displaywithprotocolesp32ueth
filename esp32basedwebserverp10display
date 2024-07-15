@@ -162,12 +162,19 @@ const char MAIN_page[] PROGMEM = R"=====(
       <input type="number" id="xPosition" name="xPosition" placeholder="X Position"><br><br>
       <input type="number" id="yPosition" name="yPosition" placeholder="Y Position"><br><br>
       <textarea id="TextBox" name="TextBox" rows="4" cols="50"></textarea><br><br>
-      <input type="number" id="textShift" name="textShift" placeholder="Text Shift"><br><br>
+      
+      <h2>Temporary Text:</h2><br>
+      <input type="number" id="tempX" name="tempX" placeholder="Temporary X Position"><br><br>
+      <input type="number" id="tempY" name="tempY" placeholder="Temporary Y Position"><br><br>
+      <textarea id="tempText" name="tempText" rows="4" cols="50"></textarea><br><br>
+      
+      <input type="checkbox" id="clearCheckbox" name="clearCheckbox"> Clear Screen<br><br>
     </div>
       
     <div>
       <button type="button" class="buttonSend" onclick="sendData()">Send Text and Position</button>
-      <button type="button" class="buttonSend" onclick="sendShift()">Shift Text Backward</button>
+      <button type="button" class="buttonSend" onclick="sendTemporaryData()">Send Temporary Text</button>
+      <button type="button" class="buttonSend" onclick="clearScreen()">Clear Screen</button>
     </div>
 
     <script>
@@ -185,11 +192,21 @@ const char MAIN_page[] PROGMEM = R"=====(
         xhttp2.send();
       }
 
-      function sendShift() {
-        var shift = document.getElementById("textShift").value;
+      function sendTemporaryData() {
+        var tempX = document.getElementById("tempX").value;
+        var tempY = document.getElementById("tempY").value;
+        var tempText = document.getElementById("tempText").value;
         
         var xhttp = new XMLHttpRequest();
-        xhttp.open("GET", "shiftText?shift=" + shift, true);
+        xhttp.open("GET", "setTemporaryText?temp_x=" + tempX + "&temp_y=" + tempY + "&temp_text=" + tempText, true);
+        xhttp.send();
+      }
+
+      function clearScreen() {
+        var clear = document.getElementById("clearCheckbox").checked;
+        
+        var xhttp = new XMLHttpRequest();
+        xhttp.open("GET", "clearScreen?clear=" + clear, true);
         xhttp.send();
       }
     </script>
