@@ -20,6 +20,12 @@ int y_position = 0; // Default y position
 int text_shift = 0; // Default text shift amount
 char Text[256] = "Default Text";
 
+int temp_x = 0; // Temporary x position
+int temp_y = 0; // Temporary y position
+char TempText[256] = ""; // Temporary text to display
+
+bool clearScreen = false; // Flag to clear the screen
+
 void handleRoot() {
   server.send(200, "text/html", MAIN_page); // Send web page
 }
@@ -41,6 +47,19 @@ void handle_SetText() {
 
 void handle_ShiftText() {
   text_shift = server.arg("shift").toInt();
+  server.send(200, "text/plain", ""); // Send response
+}
+
+void handle_TemporaryText() {
+  temp_x = server.arg("temp_x").toInt();
+  temp_y = server.arg("temp_y").toInt();
+  String temp_text = server.arg("temp_text");
+  strncpy(TempText, temp_text.c_str(), sizeof(TempText));
+  server.send(200, "text/plain", ""); // Send response
+}
+
+void handle_ClearScreen() {
+  clearScreen = server.arg("clear") == "true"; // Convert string "true" to boolean true
   server.send(200, "text/plain", ""); // Send response
 }
 
@@ -73,6 +92,8 @@ void setup() {
   server.on("/setTextPosition", handle_SetTextPosition);
   server.on("/setText", handle_SetText);
   server.on("/shiftText", handle_ShiftText);
+  server.on("/setTemporaryText", handle_TemporaryText);
+  server.on("/clearScreen", handle_ClearScreen);
   
   server.begin(); // Start server
   Serial.println("HTTP server started");
@@ -81,9 +102,17 @@ void setup() {
 void loop() {
   server.handleClient();  // Handle client requests
 
+  if (clearScreen) {
+    Disp.clear(); // Clear the display
+    clearScreen = false; // Reset clear flag
+  }
+
   Disp.loop(); // Run "Disp.loop" to refresh the LED
+
   int shifted_x = x_position - text_shift; // Calculate shifted x position
   Disp.drawText(shifted_x, y_position, Text); // Display text at shifted position
+
+  Disp.drawText(temp_x, temp_y, TempText); // Display temporary text at specified position
 }
 
 #indexpage.h in this i will write the html code
