@@ -1,3 +1,9 @@
+when i am using esp32 by espress 2.0.14 it works fine and arduino i am using 
+
+
+
+
+
 # p10displaywithprotocolesp32ueth
 maine apna khud ka ek protocol banaya hai p10 display ke liye rs485 to ttl module ke sath. |C|1|4|1|28-0-#u#R|97| like this nand sir protocol
 mai nand sir ke jaisa hi khud ka ek protocol banane ka try kar rha hu p10 display ke liye jisse ki mai chizo ko apne hisab se p10 display me jo kuch dikhana hai use display kara saku. 
