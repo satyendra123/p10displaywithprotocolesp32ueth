@@ -335,4 +335,369 @@ void loop() {
   }
 }
 
-##
+#using the file system
+Share
+
+
+You said:
+#include <FS.h>
+#include <SPIFFS.h>
+#include <DMD32.h>
+#include "fonts/SystemFont5x7.h"
+#include "fonts/Arial_Black_16.h"
+
+// Define UART pins
+#define RX_PIN 32
+#define TX_PIN 33
+
+// Initialize UART
+HardwareSerial mySerial(2);
+
+// Define the DMD display setup
+#define DISPLAYS_ACROSS 1
+#define DISPLAYS_DOWN 1
+DMD dmd(DISPLAYS_ACROSS, DISPLAYS_DOWN);
+
+hw_timer_t *timer = NULL;
+
+String dataBuffer = "";
+
+// Define arrows
+const byte upArrow[] PROGMEM = {
+  16, 13,
+  B00000001, B10000000,
+  B00000011, B11000000,
+  B00000111, B11100000,
+  B00001111, B11110000,
+  B00011111, B11111000,
+  B00111111, B11111100,
+  B01111111, B11111110,
+  B11111111, B11111111,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+};
+
+const byte downArrow[] PROGMEM = {
+  16, 13,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B00001111, B11110000,
+  B11111111, B11111111,
+  B01111111, B11111110,
+  B00111111, B11111100,
+  B00011111, B11111000,
+  B00001111, B11110000,
+  B00000111, B11100000,
+  B00000011, B11000000,
+  B00000001, B10000000,
+};
+
+const byte leftArrow[] PROGMEM = {
+  16, 13,
+  B00000000, B10000000,
+  B00000000, B11000000,
+  B00000000, B11100000,
+  B00000000, B11110000,
+  B11111111, B11111000,
+  B11111111, B11111100,
+  B11111111, B11111110,
+  B11111111, B11111110,
+  B00000000, B11111100,
+  B00000000, B11111000,
+  B00000000, B11110000,
+  B00000000, B11100000,
+  B00000000, B10000000,
+};
+
+const byte rightArrow[] PROGMEM = {
+  16, 13,
+  B00000001, B00000000,
+  B00000011, B00000000,
+  B00000111, B00000000,
+  B00001111, B00000000,
+  B00011111, B11111111,
+  B00111111, B11111111,
+  B01111111, B11111111,
+  B01111111, B11111111,
+  B00111111, B00000000,
+  B00011111, B00000000,
+  B00001111, B00000000,
+  B00000111, B00000000,
+  B00000011, B00000000,
+};
+
+// Function prototypes
+void setupFileSystem();
+void savePermanentData(int x_axis, int y_axis, const String &display_data);
+void displayStoredData();
+String readFile(const char *path);
+void writeFile(const char *path, const String &data);
+void clearFile(const char *path);
+
+void IRAM_ATTR triggerScan() {
+  dmd.scanDisplayBySPI();
+}
+
+void setup() {
+  Serial.begin(115200);
+  mySerial.begin(9600, SERIAL_8N1, RX_PIN, TX_PIN);
+
+  // Initialize the file system
+  setupFileSystem();
+  displayStoredData(); // Load any saved data
+
+  // Set up the DMD timer for display
+  uint8_t cpuClock = ESP.getCpuFreqMHz();
+  timer = timerBegin(0, cpuClock, true);
+  timerAttachInterrupt(timer, &triggerScan, true);
+  timerAlarmWrite(timer, 300, true);
+  timerAlarmEnable(timer);
+  disableCore0WDT();  // Disable watchdog for core 0
+  disableCore1WDT();  // Disable watchdog for core 1
+}
+
+// Function to initialize SPIFFS
+void setupFileSystem() {
+  if (!SPIFFS.begin(true)) {
+    Serial.println("Failed to mount file system");
+    return;
+  }
+  Serial.println("File system mounted successfully");
+}
+
+void drawArrow(const byte *arrow, int x, int y) {
+  for (int i = 0; i < 13; i++) {  // 13 rows
+    for (int j = 0; j < 16; j++) {  // 16 columns
+      byte b = pgm_read_byte_near(arrow + i * 2 + (j / 8));  // Two bytes per row
+      if (b & (1 << (7 - (j % 8)))) {
+        dmd.drawLine(x + j, y + i, x + j, y + i, GRAPHICS_NORMAL);  // Simulate a pixel using drawLine
+      }
+    }
+  }
+}
+
+void displayDataAtCoordinates(int x, int y, const String& data) {
+  dmd.selectFont(SystemFont5x7);
+  dmd.drawString(x, y, data.c_str(), data.length(), GRAPHICS_NORMAL);
+}
+
+void clearScreen() {
+  dmd.clearScreen(true);  // Clear the DMD display
+  Serial.println("Display cleared.");
+}
+
+void shiftCharacter(String data) {
+  int startPos = data.indexOf("|F|") + 3;
+  int endPos = data.indexOf('E', startPos);
+  if (startPos >= 0 && endPos > startPos) {
+    int position = data.substring(startPos, endPos).toInt();
+    Serial.print("Shifting character to position: ");
+    Serial.println(position);
+  } else {
+    Serial.println("Invalid shift character format");
+  }
+}
+
+// Function to handle custom protocol
+void customProtocol(String data) {
+  Serial.println("Processing custom protocol...");
+  extractData(data);
+}
+
+// Function to extract data
+void extractData(String data) {
+  bool isTemporary = true;  // Default to true, indicating temporary data
+
+  int startPos = data.indexOf('|') + 1;
+  int endPos = data.indexOf('|', startPos);
+  String start_byte = data.substring(startPos, endPos);
+
+  startPos = endPos + 1;
+  endPos = data.indexOf('|', startPos);
+  int ID = data.substring(startPos, endPos).toInt();
+
+  startPos = endPos + 1;
+  endPos = data.indexOf('|', startPos);
+  int data_type_code = data.substring(startPos, endPos).toInt();
+
+  // Determine if data is temporary or permanent based on data_type_code
+  if (data_type_code == 8) {
+    isTemporary = false; // Permanent data for code 1 or 4
+  }
+
+  String data_type = (isTemporary) ? "temporary" : "permanent";
+
+  startPos = endPos + 1;
+  endPos = data.indexOf('|', startPos);
+  int fakedata = data.substring(startPos, endPos).toInt();
+
+  startPos = endPos + 1;
+  endPos = data.indexOf('-', startPos);
+  int x_axis = data.substring(startPos, endPos).toInt();
+
+  startPos = endPos + 1;
+  endPos = data.indexOf('-', startPos);
+  int y_axis = data.substring(startPos, endPos).toInt();
+
+  startPos = endPos + 1;
+  endPos = data.indexOf('#', startPos);
+  if (endPos != -1) {
+    String arrowAndDisplayData = data.substring(endPos + 1);
+
+    if (arrowAndDisplayData.length() > 1) {
+      String arrow = arrowAndDisplayData.substring(0, 1);
+      String display_data = arrowAndDisplayData.substring(1);
+
+      // Clean up display_data if it ends with a "|"
+      if (display_data.endsWith("|")) {
+        display_data = display_data.substring(0, display_data.length() - 1);
+      }
+
+      Serial.println("Extracted Data:");
+      Serial.println("ID: " + String(ID));
+      Serial.println("Data Type: " + data_type);
+      Serial.println("X Axis: " + String(x_axis));
+      Serial.println("Y Axis: " + String(y_axis));
+      Serial.println("Arrow: " + arrow);
+      Serial.println("Display Data: " + display_data);
+
+      // Drawing the arrow and displaying data
+      drawArrow((arrow == "U") ? upArrow : (arrow == "D") ? downArrow : (arrow == "L") ? leftArrow : rightArrow, x_axis, y_axis);
+      displayDataAtCoordinates(x_axis, y_axis + 20, display_data); // Offset display text
+      if (!isTemporary) {
+        savePermanentData(x_axis, y_axis, display_data); // Save to file if permanent
+      }
+    }
+  }
+}
+
+// Function to process incoming data
+void processData(String data) {
+
+    String systemIDStr = readFile("/systemID.txt");
+    int system_id = systemIDStr.toInt();  // Convert the string to an integer
+
+    if (data.startsWith("|S|")) {
+        setSystemID(data);  // Set system ID when the command starts with |S|
+    } 
+    else if (data.startsWith("|C|")) {
+        int incomingID = data.substring(3, data.indexOf("|", 3)).toInt();
+        
+        // Compare the incoming ID with the system's ID
+        if (incomingID == system_id) {
+            // Process the |C|... commands based on the different flags
+            if (data.indexOf("|C|" + String(system_id) + "|4|") >= 0) {
+                customProtocol(data);  // Handle custom protocol for |4|
+            } 
+            else if (data.indexOf("|C|" + String(system_id) + "|8|") >= 0) {
+                Serial.println("Text is stored in the EEPROM Memory");
+                extractData(data);  // Handle storing/displaying data for |8|
+            } 
+            else if (data.indexOf("|C|" + String(system_id) + "|6|") >= 0) {
+                Serial.println("Clearing the display");
+                clearScreen();  // Call the function to clear the screen for |6|
+            } 
+            else {
+                Serial.println("Unknown command");
+            }
+        } else {
+            Serial.println("ID mismatch. Command not for this system.");
+        }
+    } 
+    else if (data.startsWith("|F|")) {
+        shiftCharacter(data);  // Handle shifting characters for |F|
+    } 
+    else {
+        Serial.println("Unknown command");
+    }
+}
+
+// Function to set the system ID
+void setSystemID(String data) {
+    int startPos = data.indexOf("|S|") + 3;
+    int endPos = data.indexOf('E', startPos);
+    int id = data.substring(startPos, endPos).toInt();
+
+    // Store the ID in preferences or file system
+    writeFile("/systemID.txt", String(id));
+
+    Serial.print("System ID set to: ");
+    Serial.println(id);
+}
+
+// Function to save permanent data to file
+void savePermanentData(int x_axis, int y_axis, const String &display_data) {
+  String filePath = "/displayData.txt"; // Define the file path
+  String data = String(x_axis) + "-" + String(y_axis) + "-" + display_data + "\n";
+  writeFile(filePath.c_str(), data);
+  Serial.println("Permanent data saved.");
+}
+
+// Function to read file data
+String readFile(const char *path) {
+  String data;
+  File file = SPIFFS.open(path, "r");
+  if (!file) {
+    Serial.println("Failed to open file for reading");
+    return "";
+  }
+  while (file.available()) {
+    data += (char)file.read();
+  }
+  file.close();
+  return data;
+}
+
+// Function to write data to file
+void writeFile(const char* path, const String &message) { // Use const String&
+    File file = SPIFFS.open(path, "w");
+    if (!file) {
+        Serial.println("Failed to open file for writing");
+        return;
+    }
+    if (file.print(message)) {
+        Serial.println("File written successfully");
+    } else {
+        Serial.println("Write failed");
+    }
+    file.close();
+}
+
+// Function to clear file data
+void clearFile(const char *path) {
+  File file = SPIFFS.open(path, "w"); // Open file in write mode to clear
+  if (!file) {
+    Serial.println("Failed to open file for clearing");
+    return;
+  }
+  file.close();
+}
+
+// Function to display stored data
+void displayStoredData() {
+  String filePath = "/displayData.txt"; // Define the file path
+  String storedData = readFile(filePath.c_str());
+  Serial.println("Stored Data:");
+  Serial.println(storedData);
+  // You can parse and display this stored data if needed
+}
+
+void loop() {
+  if (Serial.available() > 0) {
+    char incomingChar = Serial.read();
+    if (incomingChar == '\n' || incomingChar == '\r') {
+      if (dataBuffer.length() > 0) {
+        Serial.print("Received data: ");
+        Serial.println(dataBuffer);
+        processData(dataBuffer);
+        dataBuffer = "";
+      }
+    } else {
+      dataBuffer += incomingChar;
+    }
+  }
+} 
