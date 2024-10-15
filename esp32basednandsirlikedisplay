@@ -13,7 +13,9 @@ HardwareSerial mySerial(2);
 
 // Preferences for permanent storage
 Preferences preferences;
+String dataBuffer = "";
 
+// Define arrows
 // Define arrows
 const byte upArrow[] PROGMEM = {
   16, 13,
@@ -96,17 +98,31 @@ void IRAM_ATTR triggerScan() {
 void setup() {
   Serial.begin(115200);
   mySerial.begin(9600, SERIAL_8N1, RX_PIN, TX_PIN);
+  
+  // Initialize preferences for storing system ID
   preferences.begin("storage", false);
-  loadPermanentData();
+  displayStoredData();  // Load any saved data
+
+  // Set up the DMD timer for display
   uint8_t cpuClock = ESP.getCpuFreqMHz();
   timer = timerBegin(0, cpuClock, true);
   timerAttachInterrupt(timer, &triggerScan, true);
   timerAlarmWrite(timer, 300, true);
   timerAlarmEnable(timer);
+  disableCore0WDT();  // Disable watchdog for core 0
+  disableCore1WDT();  // Disable watchdog for core 1
+
 }
 
 void drawArrow(const byte *arrow, int x, int y) {
-  dmd.drawBitmap(x, y, arrow, 16, 13, GRAPHICS_NORMAL);
+  for (int i = 0; i < 13; i++) {  // 13 rows
+    for (int j = 0; j < 16; j++) {  // 16 columns
+      byte b = pgm_read_byte_near(arrow + i * 2 + (j / 8));  // Two bytes per row
+      if (b & (1 << (7 - (j % 8)))) {
+        dmd.drawLine(x + j, y + i, x + j, y + i, GRAPHICS_NORMAL);  // Simulate a pixel using drawLine
+      }
+    }
+  }
 }
 
 void displayDataAtCoordinates(int x, int y, const String& data) {
@@ -114,299 +130,58 @@ void displayDataAtCoordinates(int x, int y, const String& data) {
   dmd.drawString(x, y, data.c_str(), data.length(), GRAPHICS_NORMAL);
 }
 
-void customProtocol(String data) {
-  int startPos = data.indexOf('|') + 3;
-  int endPos = data.indexOf('|', startPos);
-  int ID = data.substring(startPos, endPos).toInt();
-
-  startPos = endPos + 1;
-  endPos = data.indexOf('|', startPos);
-  int type_code = data.substring(startPos, endPos).toInt();
-  String data_type = (type_code == 4) ? "temporary" : "permanent";
-
-  startPos = endPos + 1;
-  endPos = data.indexOf('|', startPos);
-  int fakedata = data.substring(startPos, endPos).toInt();
-
-  startPos = endPos + 1;
-  endPos = data.indexOf('-', startPos);
-  int x_axis = data.substring(startPos, endPos).toInt();
-
-  startPos = endPos + 1;
-  endPos = data.indexOf('-', startPos);
-  int y_axis = data.substring(startPos, endPos).toInt();
-
-  startPos = endPos + 2;
-  endPos = data.indexOf('#', startPos);
-  String arrow = data.substring(startPos, endPos);
-
-  startPos = endPos + 1;
-  endPos = data.indexOf('|', startPos);
-  String colorWithData = data.substring(startPos, endPos);
-  String actualColor = colorWithData.substring(0, 1);
-  int display_data = colorWithData.substring(1).toInt();
-
-  if (type_code == 8) 
-  {
-    String data_to_store = "|C|" + String(ID) + "|" + String(type_code) + "|" + String(fakedata) + "|" + String(x_axis) + "-" + String(y_axis) + "-#" + arrow + "#" + actualColor + String(display_data) + "|";
-    savePermanentData(data_to_store);
-    Serial.println("Permanent data stored: " + data_to_store);
-  }
-
-  dmd.clearScreen(true);
-  
-  if (type_code == 4) {
-    if (arrow == "u") {
-      drawArrow(upArrow, 0, 0);
-    } else if (arrow == "d") {
-      drawArrow(downArrow, 0, 0);
-    } else if (arrow == "l") {
-      drawArrow(leftArrow, 0, 0);
-    } else if (arrow == "r") {
-      drawArrow(rightArrow, 0, 0);
-    }
-    
-    displayDataAtCoordinates(x_axis, y_axis, String(display_data));
-  }
+void clearScreen() {
+    dmd.clearScreen(true);  // Clear the DMD display
+    Serial.println("Display cleared.");
 }
 
-void processData(String data) 
-{
-  data.trim();
-
-  if (data.startsWith("|S|")) 
-  {
-    setSystemID(data);
-  } 
-  
-  else if (data.startsWith("|C|")) 
-  {
-    if (data.indexOf("|6|") != -1) 
-    {
-      clearScreen(data);
-    } 
-    else 
-    {
-      customProtocol(data);
-    }
-  } 
-  
-  else if (data.startsWith("|F|")) 
-  {
-    shiftCharacter(data);
-  } 
-  else 
-  {
-    Serial.println("Unknown command");
-  }
-}
-
-// Function to save permanent data to Preferences
-void savePermanentData(String data) {
-  int index = preferences.getUInt("index", 0);
-  String key = "data" + String(index);
-  preferences.putString(key.c_str(), data);
-  preferences.putUInt("index", index + 1);
-}
-
-// Function to load all permanent data from Preferences
-void loadPermanentData() {
-  int index = preferences.getUInt("index", 0);
-  for (int i = 0; i < index; i++) {
-    String key = "data" + String(i);
-    String data = preferences.getString(key.c_str(), "");
-    Serial.println("Loaded permanent data: " + data);
-  }
-}
-
-// Function to set system ID
-void setSystemID(String data) {
-  int startPos = data.indexOf('|') + 3; // Skip past "|S|"
-  int endPos = data.indexOf('|', startPos);
-  int id = data.substring(startPos, endPos).toInt();
-  preferences.putInt("system_id", id);
-  Serial.println("System ID set to: " + String(id));
-}
-
-// Function to clear the screen
-void clearScreen(String data) {
-  int startPos = data.indexOf('|') + 3; // Skip past "|C|"
-  int endPos = data.indexOf('|', startPos);
-  int id_to_clear = data.substring(startPos, endPos).toInt();
-  int system_id = preferences.getInt("system_id", -1);
-
-  if (id_to_clear == system_id) {
-    dmd.clearScreen(true);
-    Serial.println("Screen cleared for ID: " + String(id_to_clear));
-  } else {
-    Serial.println("ID not matched for clearing screen");
-  }
-}
-
-// Function to shift character
 void shiftCharacter(String data) {
-  int startPos = data.indexOf('|') + 3; // Skip past "|F|"
-  int endPos = data.indexOf('|', startPos);
-  String idStr = data.substring(startPos, endPos);
-  int id_to_shift = idStr.toInt();
-
-  startPos = endPos + 1;
-  endPos = data.indexOf('|', startPos);
-  char shift_character = data.charAt(startPos);
-
-  int system_id = preferences.getInt("system_id", -1);
-
-  if (id_to_shift == system_id) {
-    dmd.selectFont(Arial_Black_16);
-    dmd.drawMarquee(&shift_character, 1, (32 * DISPLAYS_ACROSS) - 1, 0);
-    long start = millis();
-    long timer = millis();
-    boolean ret = false;
-    while (!ret) {
-      if ((timer + 30) < millis()) {
-        ret = dmd.stepMarquee(-1, 0);
-        timer = millis();
-      }
-    }
-    dmd.clearScreen(true);
-    Serial.println("Character shifted for ID: " + String(id_to_shift));
+  int startPos = data.indexOf("|F|") + 3;
+  int endPos = data.indexOf('E', startPos);
+  if (startPos >= 0 && endPos > startPos) {
+    int position = data.substring(startPos, endPos).toInt();
+    Serial.print("Shifting character to position: ");
+    Serial.println(position);
   } else {
-    Serial.println("ID not matched for shifting character");
+    Serial.println("Invalid shift character format");
   }
 }
 
-void loop() {
-  if (mySerial.available() > 0) {
-    String data = mySerial.readString();
-    processData(data);
-  }
+// Function to handle custom protocol
+void customProtocol(String data) {
+  Serial.println("Processing custom protocol...");
+  extractData(data);
 }
 
-#EX-2 
-#include <DMD32.h>
-#include "fonts/SystemFont5x7.h"
-#include "fonts/Arial_black_16.h"
-#include <Preferences.h>
+// Function to extract data
+void extractData(String data) {
+    // Default value for isTemporary
+    bool isTemporary = true;  // Default to true, indicating temporary data
 
-#define DISPLAYS_ACROSS 1
-#define DISPLAYS_DOWN 1
-DMD dmd(DISPLAYS_ACROSS, DISPLAYS_DOWN);
+    int startPos = data.indexOf('|') + 1;
+    int endPos = data.indexOf('|', startPos);
+    String start_byte = data.substring(startPos, endPos);
 
-Preferences preferences;
+    startPos = endPos + 1;
+    endPos = data.indexOf('|', startPos);
+    int ID = data.substring(startPos, endPos).toInt();
 
-// Arrow symbols in PROGMEM
-const byte upArrow[] PROGMEM = {
-  16, 13,
-  B00000001, B10000000,
-  B00000011, B11000000,
-  B00000111, B11100000,
-  B00001111, B11110000,
-  B00011111, B11111000,
-  B00111111, B11111100,
-  B01111111, B11111110,
-  B11111111, B11111111,
-  B00001111, B11110000,
-  B00001111, B11110000,
-  B00001111, B11110000,
-  B00001111, B11110000,
-  B00001111, B11110000,
-};
+    startPos = endPos + 1;
+    endPos = data.indexOf('|', startPos);
+    int data_type_code = data.substring(startPos, endPos).toInt();
 
-const byte downArrow[] PROGMEM = {
-  16, 13,
-  B00001111, B11110000,
-  B00001111, B11110000,
-  B00001111, B11110000,
-  B00001111, B11110000,
-  B11111111, B11111111,
-  B01111111, B11111110,
-  B00111111, B11111100,
-  B00011111, B11111000,
-  B00001111, B11110000,
-  B00000111, B11100000,
-  B00000011, B11000000,
-  B00000001, B10000000,
-};
+    // Determine if data is temporary or permanent based on data_type_code
+    if (data_type_code == 8){
+        isTemporary = false; // Permanent data for code 1 or 4
+    }
 
-const byte leftArrow[] PROGMEM = {
-  16, 13,
-  B00000000, B10000000,
-  B00000000, B11000000,
-  B00000000, B11100000,
-  B00000000, B11110000,
-  B11111111, B11111000,
-  B11111111, B11111100,
-  B11111111, B11111110,
-  B11111111, B11111110,
-  B00000000, B11111100,
-  B00000000, B11111000,
-  B00000000, B11110000,
-  B00000000, B11100000,
-  B00000000, B10000000,
-};
+    String data_type = (isTemporary) ? "temporary" : "permanent";
 
-const byte rightArrow[] PROGMEM = {
-  16, 13,
-  B00000001, B00000000,
-  B00000011, B00000000,
-  B00000111, B00000000,
-  B00001111, B00000000,
-  B00011111, B11111111,
-  B00111111, B11111111,
-  B01111111, B11111111,
-  B01111111, B11111111,
-  B00111111, B00000000,
-  B00011111, B00000000,
-  B00001111, B00000000,
-  B00000111, B00000000,
-  B00000011, B00000000,
-};
+    startPos = endPos + 1;
+    endPos = data.indexOf('|', startPos);
+    int fakedata = data.substring(startPos, endPos).toInt();
 
-void setup() {
-  Serial.begin(115200);
-  
-  // Initialize DMD
-  dmd.setBrightness(255);
-  dmd.selectFont(Arial_Black_16);
-
-  // Initialize preferences
-  preferences.begin("myApp", false); // Open preferences with app namespace
-  
-  // Setup timer for display scanning
-  hw_timer_t * timer = NULL;
-  timer = timerBegin(0, 80, true); // 80 MHz timer
-  timerAttachInterrupt(timer, &scanDisplayISR, true);
-  timerAlarmWrite(timer, 3000, true); // 3000 us period
-  timerAlarmEnable(timer);
-}
-
-void loop() {
-  // Example of receiving data (replace with your RS485 or other data handling)
-  if (Serial.available() > 0) {
-    String data = Serial.readString();
-    Serial.println("Received data: " + data);
-    
-    // Example: Process received data
-    displayAndStoreData(data);
-  }
-  // Other continuous operations if needed
-}
-
-void IRAM_ATTR scanDisplayISR() {
-  dmd.scanDisplayBySPI(); // ISR for scanning the display
-}
-
-void displayAndStoreData(String data) {
-  data.trim();
-
-  String storedDeviceId = preferences.getString("device_id", "1");
-
-  int startPos = data.indexOf('|', 3) + 1;
-  int endPos = data.indexOf('|', startPos);
-  String commandId = data.substring(startPos, endPos);
-
-  if (commandId.equals(storedDeviceId)) {
-    startPos = data.indexOf('|', 5) + 1;
+    startPos = endPos + 1;
     endPos = data.indexOf('-', startPos);
     int x_axis = data.substring(startPos, endPos).toInt();
 
@@ -414,79 +189,148 @@ void displayAndStoreData(String data) {
     endPos = data.indexOf('-', startPos);
     int y_axis = data.substring(startPos, endPos).toInt();
 
-    startPos = endPos + 2; // Skip past '-' and '#'
-    endPos = data.indexOf('|', startPos);
-    String dataToDisplay = data.substring(startPos, endPos);
+    startPos = endPos + 1;
+    endPos = data.indexOf('#', startPos);
+    if (endPos != -1) {
+        String arrowAndDisplayData = data.substring(endPos + 1);
 
-    char arrowDirection = '\0'; // Initialize arrow direction to null character
+        if (arrowAndDisplayData.length() > 1) {
+            String arrow = arrowAndDisplayData.substring(0, 1);
+            String display_data = arrowAndDisplayData.substring(1);
 
-    // Check if arrow direction is specified in the command
-    if (endPos + 1 < data.length() && data[endPos + 1] == '#') {
-      arrowDirection = data[endPos + 2];
-    }
+            // Clean up display_data if it ends with a "|"
+            if (display_data.endsWith("|")) {
+                display_data = display_data.substring(0, display_data.length() - 1);
+            }
 
-    if (data.startsWith("|4|")) {
-      // Display temporary data on screen
-      displayData(x_axis, y_axis, dataToDisplay, arrowDirection);
-    } else if (data.startsWith("|8|")) {
-      // Store permanent data in preferences
-      storeData(x_axis, y_axis, dataToDisplay, arrowDirection);
+            Serial.println("Extracted Data:");
+            Serial.println("ID: " + String(ID));
+            Serial.println("Data Type: " + data_type);
+            Serial.println("X Axis: " + String(x_axis));
+            Serial.println("Y Axis: " + String(y_axis));
+            Serial.println("Arrow: " + arrow);
+            Serial.println("Display Data: " + display_data);
+
+            // Drawing the arrow and displaying data
+            drawArrow((arrow == "U") ? upArrow : (arrow == "D") ? downArrow : (arrow == "L") ? leftArrow : rightArrow, 0, 0);
+            displayDataAtCoordinates(x_axis, y_axis, display_data);
+
+            // Save data only if it is not temporary
+            if (!isTemporary) {
+                savePermanentData(x_axis, y_axis, display_data);
+                Serial.println("Data is stored in the preference memory");
+            }
+
+        } else {
+            Serial.println("Unknown arrow direction");
+        }
     } else {
-      Serial.println("Invalid command type.");
+        Serial.println("Invalid data format, no '#' found");
     }
-  } else {
-    Serial.println("Device ID mismatch. Cannot process data.");
-  }
 }
 
-void displayData(int x_axis, int y_axis, String dataToDisplay, char arrowDirection) {
-  // Display arrow based on direction
-  if (arrowDirection != '\0') {
-    const byte *arrowSymbol = nullptr;
-    
-    switch (arrowDirection) {
-      case 'u':
-        arrowSymbol = upArrow;
-        break;
-      case 'b':
-        arrowSymbol = downArrow;
-        break;
-      case 'r':
-        arrowSymbol = rightArrow;
-        break;
-      case 'l':
-        arrowSymbol = leftArrow;
-        break;
-      default:
-        arrowSymbol = nullptr;
-        break;
+
+// Function to process incoming data
+void processData(String data) {
+   preferences.begin("my-app", true);  // Open Preferences in read-only mode
+    int system_id = preferences.getInt("system_id", -1);  // Retrieve stored system ID
+    preferences.end();
+
+    if (data.startsWith("|S|")) {
+        setSystemID(data);  // Set system ID when the command starts with |S|
+    } 
+    else if (data.startsWith("|C|")) {
+        int incomingID = data.substring(3, data.indexOf("|", 3)).toInt();
+        
+        // Compare the incoming ID with the system's ID
+        if (incomingID == system_id) {
+            // Process the |C|... commands based on the different flags
+            if (data.indexOf("|C|" + String(system_id) + "|4|") >= 0) {
+                customProtocol(data);  // Handle custom protocol for |4|
+            } 
+            else if (data.indexOf("|C|" + String(system_id) + "|8|") >= 0) {
+                Serial.println("Text is stored in the EEPROM Memory");
+                extractData(data);  // Handle storing/displaying data for |8|
+            } 
+            else if (data.indexOf("|C|" + String(system_id) + "|6|") >= 0) {
+                Serial.println("Clearing the display");
+                clearScreen();  // Call the function to clear the screen for |6|
+            } 
+            else {
+                Serial.println("Unknown command");
+            }
+        } else {
+            Serial.println("ID mismatch. Command not for this system.");
+        }
+    } 
+    else if (data.startsWith("|F|")) {
+        shiftCharacter(data);  // Handle shifting characters for |F|
+    } 
+    else {
+        Serial.println("Unknown command");
     }
-
-    // Display arrow symbol if valid
-    if (arrowSymbol != nullptr) {
-      dmd.drawStaticSymbol(x_axis, y_axis, arrowSymbol, 16, 13, GRAPHICS_NORMAL);
-    }
-  }
-
-  // Display data on screen
-  dmd.drawString(x_axis, y_axis, dataToDisplay.c_str(), GRAPHICS_NORMAL);
-
-  Serial.print("Displayed temporary data at (" + String(x_axis) + ", " + String(y_axis) + "): ");
-  Serial.println(dataToDisplay);
 }
 
-void storeData(int x_axis, int y_axis, String dataToStore, char arrowDirection) {
-  // Store permanent data in preferences or memory
-  preferences.putInt("x_axis", x_axis);
-  preferences.putInt("y_axis", y_axis);
-  preferences.putString("data_to_display", dataToStore);
-  preferences.putChar("arrow_direction", arrowDirection);
 
-  // Display data on screen with arrow if specified
-  displayData(x_axis, y_axis, dataToStore, arrowDirection);
+// Function to set the system ID
+void setSystemID(String data) {
+    int startPos = data.indexOf("|S|") + 3;
+    int endPos = data.indexOf('E', startPos);
+    int id = data.substring(startPos, endPos).toInt();
 
-  Serial.print("Stored permanent data at (" + String(x_axis) + ", " + String(y_axis) + "): ");
-  Serial.print(dataToStore);
-  Serial.print(", Arrow Direction: ");
-  Serial.println(arrowDirection);
+    preferences.begin("my-app", false);  // Open Preferences in RW mode
+    preferences.putInt("system_id", id);  // Store the system ID in Preferences
+    preferences.end();
+
+    Serial.print("System ID set to: ");
+    Serial.println(id);
+}
+
+// Save data for permanent display
+void savePermanentData(int x_axis, int y_axis, String display_data) {
+    preferences.begin("my-app", false);  // Open Preferences in RW mode with a namespace
+    preferences.putInt("xAxis", x_axis);  // Store X axis
+    preferences.putInt("yAxis", y_axis);  // Store Y axis
+    preferences.putString("displayData", display_data);  // Store display data
+    preferences.end();
+
+    Serial.println("Permanent data saved:");
+    Serial.println("X Axis: " + String(x_axis));
+    Serial.println("Y Axis: " + String(y_axis));
+    Serial.println("Display Data: " + display_data);
+}
+
+// Load permanent data in the preference storage
+void displayStoredData() {
+    preferences.begin("my-app", true);  // Open Preferences in read-only mode
+    if (preferences.isKey("xAxis") && preferences.isKey("yAxis") && preferences.isKey("displayData")) {
+        int x_axis = preferences.getInt("xAxis");
+        int y_axis = preferences.getInt("yAxis");
+        String display_data = preferences.getString("displayData");
+        displayDataAtCoordinates(x_axis, y_axis, display_data);
+        Serial.println("Restored data from memory:");
+        Serial.println("X Axis: " + String(x_axis));
+        Serial.println("Y Axis: " + String(y_axis));
+        Serial.println("Display Data: " + display_data);
+    } else {
+        Serial.println("No data found in Preferences.");
+    }
+    preferences.end();
+}
+
+// Main loop
+void loop() {
+  if (Serial.available() > 0) {
+    char incomingChar = Serial.read();
+    if (incomingChar == '\n' || incomingChar == '\r') {
+      if (dataBuffer.length() > 0) {
+        Serial.print("Received data: ");
+        Serial.println(dataBuffer);
+        processData(dataBuffer);
+        dataBuffer = "";
+      }
+    } else {
+      dataBuffer += incomingChar;
+    }
+  }
 }
