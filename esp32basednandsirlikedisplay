@@ -16,7 +16,6 @@ Preferences preferences;
 String dataBuffer = "";
 
 // Define arrows
-// Define arrows
 const byte upArrow[] PROGMEM = {
   16, 13,
   B00000001, B10000000,
@@ -91,14 +90,39 @@ DMD dmd(DISPLAYS_ACROSS, DISPLAYS_DOWN);
 
 hw_timer_t *timer = NULL;
 
+// Task handles
+TaskHandle_t Task1;
+TaskHandle_t Task2;
+
 void IRAM_ATTR triggerScan() {
   dmd.scanDisplayBySPI();
 }
 
+// Task 1: UART Processing and Storage (Core 0)
+void Task1Code(void *pvParameters) {
+  for (;;) {
+    if (mySerial.available() > 0) {
+      String incomingData = mySerial.readString();
+      Serial.println("Data received: " + incomingData);
+      processData(incomingData);  // Process the received data
+    }
+    vTaskDelay(10 / portTICK_PERIOD_MS);  // Prevent task from starving other processes
+  }
+}
+
+// Task 2: DMD Display Management (Core 1)
+void Task2Code(void *pvParameters) {
+  for (;;) {
+    dmd.scanDisplayBySPI();  // Continuously scan and update DMD
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+  }
+}
+
+// Setup function to initialize the cores, UART, DMD, and Preferences
 void setup() {
   Serial.begin(115200);
   mySerial.begin(9600, SERIAL_8N1, RX_PIN, TX_PIN);
-  
+
   // Initialize preferences for storing system ID
   preferences.begin("storage", false);
   displayStoredData();  // Load any saved data
@@ -112,6 +136,31 @@ void setup() {
   disableCore0WDT();  // Disable watchdog for core 0
   disableCore1WDT();  // Disable watchdog for core 1
 
+  // Create tasks for each core
+  xTaskCreatePinnedToCore(
+    Task1Code,    // Function to implement the task
+    "Task1",      // Name of the task
+    10000,        // Stack size in words
+    NULL,         // Task input parameter
+    1,            // Priority of the task
+    &Task1,       // Task handle
+    0);           // Core 0 (UART processing)
+
+  xTaskCreatePinnedToCore(
+    Task2Code,    // Function to implement the task
+    "Task2",      // Name of the task
+    10000,        // Stack size in words
+    NULL,         // Task input parameter
+    1,            // Priority of the task
+    &Task2,       // Task handle
+    1);           // Core 1 (DMD Display)
+}
+
+// Function to process incoming data
+// Function to handle custom protocol
+void customProtocol(String data) {
+  Serial.println("Processing custom protocol...");
+  extractData(data);
 }
 
 void drawArrow(const byte *arrow, int x, int y) {
@@ -124,35 +173,6 @@ void drawArrow(const byte *arrow, int x, int y) {
     }
   }
 }
-
-void displayDataAtCoordinates(int x, int y, const String& data) {
-  dmd.selectFont(SystemFont5x7);
-  dmd.drawString(x, y, data.c_str(), data.length(), GRAPHICS_NORMAL);
-}
-
-void clearScreen() {
-    dmd.clearScreen(true);  // Clear the DMD display
-    Serial.println("Display cleared.");
-}
-
-void shiftCharacter(String data) {
-  int startPos = data.indexOf("|F|") + 3;
-  int endPos = data.indexOf('E', startPos);
-  if (startPos >= 0 && endPos > startPos) {
-    int position = data.substring(startPos, endPos).toInt();
-    Serial.print("Shifting character to position: ");
-    Serial.println(position);
-  } else {
-    Serial.println("Invalid shift character format");
-  }
-}
-
-// Function to handle custom protocol
-void customProtocol(String data) {
-  Serial.println("Processing custom protocol...");
-  extractData(data);
-}
-
 // Function to extract data
 void extractData(String data) {
     // Default value for isTemporary
@@ -233,6 +253,7 @@ void extractData(String data) {
 // Function to process incoming data
 void processData(String data) {
    preferences.begin("my-app", true);  // Open Preferences in read-only mode
+    timerAlarmDisable(timer);
     int system_id = preferences.getInt("system_id", -1);  // Retrieve stored system ID
     preferences.end();
 
@@ -271,54 +292,73 @@ void processData(String data) {
     }
 }
 
-
 // Function to set the system ID
 void setSystemID(String data) {
-    int startPos = data.indexOf("|S|") + 3;
-    int endPos = data.indexOf('E', startPos);
-    int id = data.substring(startPos, endPos).toInt();
+  int startPos = data.indexOf("|S|") + 3;
+  int endPos = data.indexOf('E', startPos);
+  int id = data.substring(startPos, endPos).toInt();
 
-    preferences.begin("my-app", false);  // Open Preferences in RW mode
-    preferences.putInt("system_id", id);  // Store the system ID in Preferences
-    preferences.end();
+  preferences.begin("my-app", false);  // Open Preferences in RW mode
+  preferences.putInt("system_id", id);  // Store the system ID in Preferences
+  preferences.end();
 
-    Serial.print("System ID set to: ");
-    Serial.println(id);
+  Serial.print("System ID set to: ");
+  Serial.println(id);
 }
 
 // Save data for permanent display
 void savePermanentData(int x_axis, int y_axis, String display_data) {
-    preferences.begin("my-app", false);  // Open Preferences in RW mode with a namespace
-    preferences.putInt("xAxis", x_axis);  // Store X axis
-    preferences.putInt("yAxis", y_axis);  // Store Y axis
-    preferences.putString("displayData", display_data);  // Store display data
-    preferences.end();
+  preferences.begin("my-app", false);  // Open Preferences in RW mode with a namespace
+  preferences.putInt("xAxis", x_axis);  // Store X axis
+  preferences.putInt("yAxis", y_axis);  // Store Y axis
+  preferences.putString("displayData", display_data);  // Store display data
+  preferences.end();
 
-    Serial.println("Permanent data saved:");
-    Serial.println("X Axis: " + String(x_axis));
-    Serial.println("Y Axis: " + String(y_axis));
-    Serial.println("Display Data: " + display_data);
+  Serial.println("Permanent data saved:");
+  Serial.println("X Axis: " + String(x_axis));
+  Serial.println("Y Axis: " + String(y_axis));
+  Serial.println("Display Data: " + display_data);
 }
 
-// Load permanent data in the preference storage
+// Load permanent data from preference storage
 void displayStoredData() {
-    preferences.begin("my-app", true);  // Open Preferences in read-only mode
-    if (preferences.isKey("xAxis") && preferences.isKey("yAxis") && preferences.isKey("displayData")) {
-        int x_axis = preferences.getInt("xAxis");
-        int y_axis = preferences.getInt("yAxis");
-        String display_data = preferences.getString("displayData");
-        displayDataAtCoordinates(x_axis, y_axis, display_data);
-        Serial.println("Restored data from memory:");
-        Serial.println("X Axis: " + String(x_axis));
-        Serial.println("Y Axis: " + String(y_axis));
-        Serial.println("Display Data: " + display_data);
-    } else {
-        Serial.println("No data found in Preferences.");
-    }
-    preferences.end();
+  preferences.begin("my-app", true);  // Open Preferences in read-only mode
+  int x_axis = preferences.getInt("xAxis");
+  int y_axis = preferences.getInt("yAxis");
+  String display_data = preferences.getString("displayData");
+  displayDataAtCoordinates(x_axis, y_axis, display_data);
+  Serial.println("Restored data from memory:");
+  Serial.println("X Axis: " + String(x_axis));
+  Serial.println("Y Axis: " + String(y_axis));
+  Serial.println("Display Data: " + display_data);
+  preferences.end();
 }
 
-// Main loop
+// Shift character function for |F| protocol
+void shiftCharacter(String data) {
+  int startPos = data.indexOf("|F|") + 3;
+  int endPos = data.indexOf('E', startPos);
+  if (startPos >= 0 && endPos > startPos) {
+    int position = data.substring(startPos, endPos).toInt();
+    Serial.print("Shifting character to position: ");
+    Serial.println(position);
+  } else {
+    Serial.println("Invalid shift character format");
+  }
+}
+
+// Clear the DMD display
+void clearScreen() {
+  dmd.clearScreen(true);  // Clear the DMD display
+  Serial.println("Display cleared.");
+}
+
+// Display data at given coordinates
+void displayDataAtCoordinates(int x, int y, const String& data) {
+  dmd.selectFont(SystemFont5x7);
+  dmd.drawString(x, y, data.c_str(), data.length(), GRAPHICS_NORMAL);
+}
+
 void loop() {
   if (Serial.available() > 0) {
     char incomingChar = Serial.read();
