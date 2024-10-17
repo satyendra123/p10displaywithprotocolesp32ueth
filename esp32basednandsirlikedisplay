@@ -1,4 +1,4 @@
-# isme maine nand sir ke jaisa hi same ek display banane ka try kiya hai. abhi maine ise run krke nahi dekha hai.
+# isme maine nand sir ke jaisa hi same ek display banane ka try kiya hai.this is working and tested
 #include <Preferences.h>
 #include <DMD32.h>
 #include "fonts/SystemFont5x7.h"
