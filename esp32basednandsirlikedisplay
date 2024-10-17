@@ -15,107 +15,17 @@ HardwareSerial mySerial(2);
 Preferences preferences;
 String dataBuffer = "";
 
-// Define arrows
-const byte upArrow[] PROGMEM = {
-  16, 13,
-  B00000001, B10000000,
-  B00000011, B11000000,
-  B00000111, B11100000,
-  B00001111, B11110000,
-  B00011111, B11111000,
-  B00111111, B11111100,
-  B01111111, B11111110,
-  B11111111, B11111111,
-  B00001111, B11110000,
-  B00001111, B11110000,
-  B00001111, B11110000,
-  B00001111, B11110000,
-  B00001111, B11110000,
-};
-
-const byte downArrow[] PROGMEM = {
-  16, 13,
-  B00001111, B11110000,
-  B00001111, B11110000,
-  B00001111, B11110000,
-  B00001111, B11110000,
-  B11111111, B11111111,
-  B01111111, B11111110,
-  B00111111, B11111100,
-  B00011111, B11111000,
-  B00001111, B11110000,
-  B00000111, B11100000,
-  B00000011, B11000000,
-  B00000001, B10000000,
-};
-
-const byte leftArrow[] PROGMEM = {
-  16, 13,
-  B00000000, B10000000,
-  B00000000, B11000000,
-  B00000000, B11100000,
-  B00000000, B11110000,
-  B11111111, B11111000,
-  B11111111, B11111100,
-  B11111111, B11111110,
-  B11111111, B11111110,
-  B00000000, B11111100,
-  B00000000, B11111000,
-  B00000000, B11110000,
-  B00000000, B11100000,
-  B00000000, B10000000,
-};
-
-const byte rightArrow[] PROGMEM = {
-  16, 13,
-  B00000001, B00000000,
-  B00000011, B00000000,
-  B00000111, B00000000,
-  B00001111, B00000000,
-  B00011111, B11111111,
-  B00111111, B11111111,
-  B01111111, B11111111,
-  B01111111, B11111111,
-  B00111111, B00000000,
-  B00011111, B00000000,
-  B00001111, B00000000,
-  B00000111, B00000000,
-  B00000011, B00000000,
-};
 
 // DMD display setup
 #define DISPLAYS_ACROSS 1
 #define DISPLAYS_DOWN 1
 DMD dmd(DISPLAYS_ACROSS, DISPLAYS_DOWN);
 
+volatile bool displayUpdateRequired = false;  // Flag for display update
 hw_timer_t *timer = NULL;
 
-// Task handles
-TaskHandle_t Task1;
-TaskHandle_t Task2;
-
 void IRAM_ATTR triggerScan() {
-  dmd.scanDisplayBySPI();
-}
-
-// Task 1: UART Processing and Storage (Core 0)
-void Task1Code(void *pvParameters) {
-  for (;;) {
-    if (mySerial.available() > 0) {
-      String incomingData = mySerial.readString();
-      Serial.println("Data received: " + incomingData);
-      processData(incomingData);  // Process the received data
-    }
-    vTaskDelay(10 / portTICK_PERIOD_MS);  // Prevent task from starving other processes
-  }
-}
-
-// Task 2: DMD Display Management (Core 1)
-void Task2Code(void *pvParameters) {
-  for (;;) {
-    dmd.scanDisplayBySPI();  // Continuously scan and update DMD
-    vTaskDelay(10 / portTICK_PERIOD_MS);
-  }
+    displayUpdateRequired = true;  // Set flag to indicate display needs updating
 }
 
 // Setup function to initialize the cores, UART, DMD, and Preferences
@@ -124,7 +34,7 @@ void setup() {
   mySerial.begin(9600, SERIAL_8N1, RX_PIN, TX_PIN);
 
   // Initialize preferences for storing system ID
-  preferences.begin("storage", false);
+  preferences.begin("my-app", false);
   displayStoredData();  // Load any saved data
 
   // Set up the DMD timer for display
@@ -135,28 +45,8 @@ void setup() {
   timerAlarmEnable(timer);
   disableCore0WDT();  // Disable watchdog for core 0
   disableCore1WDT();  // Disable watchdog for core 1
-
-  // Create tasks for each core
-  xTaskCreatePinnedToCore(
-    Task1Code,    // Function to implement the task
-    "Task1",      // Name of the task
-    10000,        // Stack size in words
-    NULL,         // Task input parameter
-    1,            // Priority of the task
-    &Task1,       // Task handle
-    0);           // Core 0 (UART processing)
-
-  xTaskCreatePinnedToCore(
-    Task2Code,    // Function to implement the task
-    "Task2",      // Name of the task
-    10000,        // Stack size in words
-    NULL,         // Task input parameter
-    1,            // Priority of the task
-    &Task2,       // Task handle
-    1);           // Core 1 (DMD Display)
 }
 
-// Function to process incoming data
 // Function to handle custom protocol
 void customProtocol(String data) {
   Serial.println("Processing custom protocol...");
@@ -173,6 +63,7 @@ void drawArrow(const byte *arrow, int x, int y) {
     }
   }
 }
+
 // Function to extract data
 void extractData(String data) {
     // Default value for isTemporary
@@ -232,7 +123,7 @@ void extractData(String data) {
             Serial.println("Display Data: " + display_data);
 
             // Drawing the arrow and displaying data
-            drawArrow((arrow == "U") ? upArrow : (arrow == "D") ? downArrow : (arrow == "L") ? leftArrow : rightArrow, 0, 0);
+            //drawArrow((arrow == "U") ? upArrow : (arrow == "D") ? downArrow : (arrow == "L") ? leftArrow : rightArrow, 0, 0);
             displayDataAtCoordinates(x_axis, y_axis, display_data);
 
             // Save data only if it is not temporary
@@ -313,21 +204,18 @@ void savePermanentData(int x_axis, int y_axis, String display_data) {
   preferences.putInt("yAxis", y_axis);  // Store Y axis
   preferences.putString("displayData", display_data);  // Store display data
   preferences.end();
-
-  Serial.println("Permanent data saved:");
-  Serial.println("X Axis: " + String(x_axis));
-  Serial.println("Y Axis: " + String(y_axis));
-  Serial.println("Display Data: " + display_data);
 }
 
 // Load permanent data from preference storage
 void displayStoredData() {
   preferences.begin("my-app", true);  // Open Preferences in read-only mode
+  int system_id = preferences.getInt("system_id", -1);
   int x_axis = preferences.getInt("xAxis");
   int y_axis = preferences.getInt("yAxis");
   String display_data = preferences.getString("displayData");
   displayDataAtCoordinates(x_axis, y_axis, display_data);
   Serial.println("Restored data from memory:");
+  Serial.println("ID: " + String(system_id));
   Serial.println("X Axis: " + String(x_axis));
   Serial.println("Y Axis: " + String(y_axis));
   Serial.println("Display Data: " + display_data);
@@ -355,11 +243,18 @@ void clearScreen() {
 
 // Display data at given coordinates
 void displayDataAtCoordinates(int x, int y, const String& data) {
-  dmd.selectFont(SystemFont5x7);
+  dmd.selectFont(Arial_Black_16);
   dmd.drawString(x, y, data.c_str(), data.length(), GRAPHICS_NORMAL);
 }
 
 void loop() {
+
+  // Check if display needs updating (flag is set by the ISR)
+  if (displayUpdateRequired) {
+      dmd.scanDisplayBySPI();  // Update display
+      displayUpdateRequired = false;  // Reset the flag
+  }
+
   if (Serial.available() > 0) {
     char incomingChar = Serial.read();
     if (incomingChar == '\n' || incomingChar == '\r') {
